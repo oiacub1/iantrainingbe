@@ -182,12 +182,35 @@ API Gateway → Lambda → Handler → Service → Repository → DynamoDB
 
 ## 🚢 CI/CD
 
-```bash
-# GitHub Actions workflow (TODO)
-.github/workflows/
-├── test.yml           # Tests en cada PR
-├── build.yml          # Build en merge a main
-└── deploy.yml         # Deploy a staging/production
+GitHub Actions workflows implementados:
+
+### Workflows Disponibles:
+
+1. **Test and Validate** (`.github/workflows/test.yml`):
+   - Se ejecuta en cada PR y push a main
+   - Ejecuta linters, tests unitarios y build de Lambdas
+   - Valida archivos i18n
+
+2. **Deploy Lambda and Setup DynamoDB** (`.github/workflows/deploy.yml`):
+   - Se ejecuta en push a main
+   - Build y deploy de funciones Lambda a AWS
+   - Verifica y crea tablas DynamoDB si no existen
+   - Entorno único de producción
+
+### Configuración Requerida:
+
+1. **Secrets de GitHub**:
+   - `AWS_ACCESS_KEY_ID`: Access Key ID de IAM User
+   - `AWS_SECRET_ACCESS_KEY`: Secret Access Key de IAM User
+   - `AWS_REGION`: Región de AWS (opcional, default: us-east-1)
+
+2. **Variables de Entorno**:
+   - Tabla DynamoDB: `training-platform`
+   - Funciones Lambda: `training-platform-{nombre}`
+
+### Flujo de Deploy:
+```
+Push a main → Tests → Build Lambdas → Check DynamoDB → Create/Update Tables → Deploy Lambdas → Verify
 ```
 
 ## 📊 Monitoreo
