@@ -96,7 +96,7 @@ jobs:
           --stream-specification StreamEnabled=true,StreamViewType=NEW_AND_OLD_IMAGES \
           --sse-specification Enabled=true \
           # --point-in-time-recovery-specification PointInTimeRecoveryEnabled=true \
-          --region "$AWS_REGION"
+          --region "$AWS_REGION" \
         
         echo "Waiting for table to become active..."
         aws dynamodb wait table-exists --table-name "$DYNAMODB_TABLE_NAME" --region "$AWS_REGION"
