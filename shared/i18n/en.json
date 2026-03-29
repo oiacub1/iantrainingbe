@@ -1,0 +1,50 @@
+{
+  "version": "1.0.0",
+  "locale": "en",
+  "translations": {
+    "common": {
+      "app_name": "Training Platform",
+      "welcome": "Welcome",
+      "loading": "Loading...",
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "auth": {
+      "login": "Login",
+      "register": "Register",
+      "email": "Email",
+      "password": "Password",
+      "confirm_password": "Confirm Password",
+      "name": "Name",
+      "name_placeholder": "Your name",
+      "role": "I am a",
+      "student": "Student",
+      "trainer": "Trainer",
+      "no_account": "Don't have an account?",
+      "already_have_account": "Already have an account?",
+      "create_account": "Create your account",
+      "password_mismatch": "Passwords do not match",
+      "password_too_short": "Password must be at least 6 characters",
+      "registration_failed": "Registration failed. Please try again."
+    },
+    "exercises": {
+      "squat": {
+        "name": "Barbell Back Squat",
+        "description": "Compound lower body exercise targeting quadriceps, glutes, and hamstrings"
+      },
+      "bench_press": {
+        "name": "Barbell Bench Press",
+        "description": "Compound upper body exercise targeting chest, shoulders, and triceps"
+      }
+    },
+    "muscle_groups": {
+      "quadriceps": "Quadriceps",
+      "glutes": "Glutes",
+      "hamstrings": "Hamstrings",
+      "chest": "Chest",
+      "shoulders": "Shoulders",
+      "triceps": "Triceps",
+      "core": "Core"
+    }
+  }
+}
