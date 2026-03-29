@@ -8,7 +8,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  GO_VERSION: "1.21"
+  GO_VERSION: "1.25"
   DYNAMODB_TABLE_NAME: "training-platform"
 
 jobs:

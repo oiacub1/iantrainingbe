@@ -5,7 +5,7 @@ Plataforma de entrenamiento personalizada con arquitectura serverless en AWS.
 ## 🏗️ Stack Técnico
 
 - **Frontend**: React (Mobile-first) con TypeScript
-- **Backend**: Go 1.21+ con AWS Lambda
+- **Backend**: Go 1.25+ con AWS Lambda
 - **Base de Datos**: DynamoDB (Single Table Design)
 - **Infraestructura**: AWS (Lambda, API Gateway, DynamoDB, Cognito)
 - **IaC**: Terraform
@@ -55,7 +55,7 @@ Ver [`docs/I18N_STRUCTURE.md`](docs/I18N_STRUCTURE.md) para detalles de implemen
 ### Prerrequisitos
 
 ```bash
-# Go 1.21+
+# Go 1.25+
 go version
 
 # AWS CLI configurado
