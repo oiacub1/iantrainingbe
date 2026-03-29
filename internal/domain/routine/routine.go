@@ -54,6 +54,15 @@ type UpdateRoutineRequest struct {
 	Status      RoutineStatus `json:"status"`
 }
 
+type CreateWorkoutDayRequest struct {
+	RoutineID  string        `json:"routineId"`
+	WeekNumber int           `json:"weekNumber"`
+	DayNumber  int           `json:"dayNumber"`
+	DayName    string        `json:"dayName"`
+	IsRestDay  bool          `json:"isRestDay"`
+	Exercises  []ExerciseSet `json:"exercises"`
+}
+
 func (s RoutineStatus) IsValid() bool {
 	switch s {
 	case RoutineStatusDraft, RoutineStatusActive, RoutineStatusCompleted, RoutineStatusArchived:

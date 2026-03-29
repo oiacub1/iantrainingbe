@@ -12,14 +12,14 @@ const (
 )
 
 type RoutineAssignment struct {
-	ID         string           `json:"id"`
-	RoutineID  string           `json:"routineId"`
-	StudentID  string           `json:"studentId"`
-	StartDate  time.Time        `json:"startDate"`
-	EndDate    time.Time        `json:"endDate"`
-	Status     AssignmentStatus `json:"status"`
-	CreatedAt  time.Time        `json:"createdAt"`
-	UpdatedAt  time.Time        `json:"updatedAt"`
+	ID        string           `json:"id"`
+	RoutineID string           `json:"routineId"`
+	StudentID string           `json:"studentId"`
+	StartDate time.Time        `json:"startDate"`
+	EndDate   time.Time        `json:"endDate"`
+	Status    AssignmentStatus `json:"status"`
+	CreatedAt time.Time        `json:"createdAt"`
+	UpdatedAt time.Time        `json:"updatedAt"`
 }
 
 type CreateAssignmentRequest struct {
@@ -33,6 +33,22 @@ type UpdateAssignmentRequest struct {
 	StartDate string           `json:"startDate"`
 	EndDate   string           `json:"endDate"`
 	Status    AssignmentStatus `json:"status"`
+}
+
+type AssignRoutineRequest struct {
+	RoutineID  string   `json:"routineId"`
+	StudentIDs []string `json:"studentIds"`
+	StartDate  string   `json:"startDate"`
+	EndDate    string   `json:"endDate"`
+}
+
+type AssignRoutineResponse struct {
+	AssignmentID string   `json:"assignmentId"`
+	RoutineID    string   `json:"routineId"`
+	StudentIDs   []string `json:"studentIds"`
+	StartDate    string   `json:"startDate"`
+	EndDate      string   `json:"endDate"`
+	Status       string   `json:"status"`
 }
 
 func (s AssignmentStatus) IsValid() bool {
