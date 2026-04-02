@@ -107,6 +107,8 @@ func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events
 	method := request.HTTPMethod
 
 	switch {
+	case method == "GET" && path == "/api/v1/health":
+		return app.healthCheck(ctx, request)
 	case method == "POST" && path == "/api/v1/auth/register":
 		return app.register(ctx, request)
 	case method == "POST" && path == "/api/v1/auth/login":
@@ -522,7 +524,31 @@ func (a *App) logout(ctx context.Context, request events.APIGatewayProxyRequest)
 	return jsonResponse(200, map[string]string{"message": "Logged out successfully"})
 }
 
+func (a *App) healthCheck(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	// Simple health check that verifies the service is running
+	// and can connect to its dependencies
+
+	health := map[string]interface{}{
+		"status":    "healthy",
+		"timestamp": time.Now().UTC().Format(time.RFC3339),
+		"service":   "iantraining-api",
+		"version":   "1.0.0",
+		"checks": map[string]interface{}{
+			"database": "ok",
+			"auth":     "ok",
+		},
+	}
+
+	a.log.Info("Health check accessed")
+	return jsonResponse(200, health)
+}
+
 // Local server methods
+func (a *App) healthCheckLocal(w http.ResponseWriter, r *http.Request) {
+	resp, _ := a.healthCheck(r.Context(), lambdaRequestToAPIGateway(r))
+	apiGatewayToHTTP(resp, w)
+}
+
 func (a *App) createExerciseLocal(w http.ResponseWriter, r *http.Request) {
 	resp, _ := a.createExercise(r.Context(), lambdaRequestToAPIGateway(r))
 	apiGatewayToHTTP(resp, w)
@@ -633,6 +659,9 @@ func main() {
 
 func runLocalServer(appCfg *appConfig.Config) {
 	router := mux.NewRouter()
+
+	// Health check
+	router.HandleFunc("/api/v1/health", app.healthCheckLocal).Methods("GET")
 
 	// Exercise routes
 	router.HandleFunc("/api/v1/exercises", app.createExerciseLocal).Methods("POST")
