@@ -64,11 +64,11 @@ jobs:
       - name: Build Go binary (x86_64 for Lambda)
         run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-          go build -ldflags="-s -w" -o main ./cmd/api
-          chmod +x main
+          go build -ldflags="-s -w" -o bootstrap ./cmd/api
+          chmod +x bootstrap
 
       - name: Create ZIP file
-        run: zip bootstrap.zip main
+        run: zip bootstrap.zip bootstrap
 
       - name: Check if DynamoDB table exists
         id: check-table
@@ -138,8 +138,8 @@ jobs:
             echo "Creating new Lambda function: IanTrainingBackend"
             aws lambda create-function \
               --function-name "IanTrainingBackend" \
-              --runtime go1.x \
-              --handler main \
+              --runtime provided.al2 \
+              --handler bootstrap \
               --zip-file fileb://bootstrap.zip \
               --role arn:aws:iam::234541249007:role/lambda-execution-role \
               --region "${{ secrets.AWS_REGION || 'us-east-1' }}"
