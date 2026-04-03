@@ -170,11 +170,14 @@ jobs:
         run: |
           echo "Testing Lambda function..."
           
+          # Create test payload file
+          echo '{"path":"/api/v1/health","httpMethod":"GET","headers":{},"queryStringParameters":{},"body":""}' > test-payload.json
+          
           # Simple test - just check if Lambda responds
           echo "Testing basic Lambda invocation..."
           aws lambda invoke \
             --function-name "IanTrainingBackend" \
-            --payload '{"path":"/api/v1/health","httpMethod":"GET","headers":{},"queryStringParameters":{},"body":""}' \
+            --payload file://test-payload.json \
             --region "${{ secrets.AWS_REGION || 'us-east-1' }}" \
             response.json || echo "Lambda test failed"
           
