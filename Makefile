@@ -85,7 +85,11 @@ deploy:
 
 run-local:
 	@echo "Starting API locally..."
-	@go run ./cmd/api
+	@DYNAMODB_ENDPOINT=http://localhost:8000 \
+	RUN_LOCAL=true \
+	DYNAMODB_TABLE_NAME=training-platform \
+	AWS_REGION=us-east-1 \
+	go run ./cmd/api
 
 local-dynamodb:
 	@echo "Starting local DynamoDB..."
