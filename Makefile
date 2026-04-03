@@ -21,11 +21,11 @@ build-all:
 	@echo "Building API for all environments..."
 	@mkdir -p $(BINARY_DIR)/lambda
 	@mkdir -p $(BINARY_DIR)/local
-	@GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o $(BINARY_DIR)/lambda/bootstrap ./cmd/api
+	@GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o $(BINARY_DIR)/lambda/bootstrap ./cmd/api
 	@cd $(BINARY_DIR)/lambda && zip -q bootstrap.zip bootstrap && cd ../..
 	@go build -o $(BINARY_DIR)/local/api ./cmd/api
 	@echo "Build complete!"
-	@echo "  Lambda: $(BINARY_DIR)/lambda/bootstrap.zip"
+	@echo "  Lambda: $(BINARY_DIR)/lambda/bootstrap.zip (ARM64)"
 	@echo "  Local:  $(BINARY_DIR)/local/api"
 
 build:
@@ -36,9 +36,9 @@ build:
 	@echo "Building API for $(ENV)..."
 	@if [ "$(ENV)" = "lambda" ]; then \
 		mkdir -p $(BINARY_DIR)/lambda; \
-		GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o $(BINARY_DIR)/lambda/bootstrap ./cmd/api; \
+		GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go build -o $(BINARY_DIR)/lambda/bootstrap ./cmd/api; \
 		cd $(BINARY_DIR)/lambda && zip -q bootstrap.zip bootstrap && cd ../..; \
-		echo "Lambda built: $(BINARY_DIR)/lambda/bootstrap.zip"; \
+		echo "Lambda built: $(BINARY_DIR)/lambda/bootstrap.zip (ARM64)"; \
 	elif [ "$(ENV)" = "local" ]; then \
 		mkdir -p $(BINARY_DIR)/local; \
 		go build -o $(BINARY_DIR)/local/api ./cmd/api; \
