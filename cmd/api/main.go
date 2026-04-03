@@ -182,6 +182,16 @@ func main() {
 }
 
 func router(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	// Debug: Log full request details
+	log.Infof("=== REQUEST DEBUG ===")
+	log.Infof("Path: %s", request.Path)
+	log.Infof("Resource: %s", request.Resource)
+	log.Infof("HTTPMethod: %s", request.HTTPMethod)
+	log.Infof("RequestContext.Path: %s", request.RequestContext.Path)
+	log.Infof("RequestContext.ResourcePath: %s", request.RequestContext.ResourcePath)
+	log.Infof("PathParameters: %v", request.PathParameters)
+	log.Infof("====================")
+
 	// Handle preflight OPTIONS request
 	if request.HTTPMethod == "OPTIONS" {
 		return events.APIGatewayProxyResponse{
@@ -190,14 +200,18 @@ func router(ctx context.Context, request events.APIGatewayProxyRequest) (events.
 		}, nil
 	}
 
-	// Use RequestContext.Path if available (API Gateway v2), otherwise use Path
+	// Use the most complete path available
 	path := request.Path
 	if request.RequestContext.Path != "" {
 		path = request.RequestContext.Path
 	}
+	if request.Resource != "" && request.Resource != path {
+		log.Infof("Using Resource path: %s instead of Path: %s", request.Resource, path)
+		path = request.Resource
+	}
 	method := request.HTTPMethod
 
-	log.Infof("Received request: %s %s (raw: %s)", method, path, request.Path)
+	log.Infof("Final route: %s %s", method, path)
 
 	// Create route key
 	routeKey := fmt.Sprintf("%s %s", method, path)
