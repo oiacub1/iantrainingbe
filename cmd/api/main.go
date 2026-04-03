@@ -190,10 +190,14 @@ func router(ctx context.Context, request events.APIGatewayProxyRequest) (events.
 		}, nil
 	}
 
+	// Use RequestContext.Path if available (API Gateway v2), otherwise use Path
 	path := request.Path
+	if request.RequestContext.Path != "" {
+		path = request.RequestContext.Path
+	}
 	method := request.HTTPMethod
 
-	log.Infof("Received request: %s %s", method, path)
+	log.Infof("Received request: %s %s (raw: %s)", method, path, request.Path)
 
 	// Create route key
 	routeKey := fmt.Sprintf("%s %s", method, path)
