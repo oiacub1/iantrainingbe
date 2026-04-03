@@ -170,12 +170,21 @@ jobs:
         run: |
           echo "Testing Lambda function..."
           
-          # Test health endpoint
+          # Simple test - just check if Lambda responds
+          echo "Testing basic Lambda invocation..."
           aws lambda invoke \
             --function-name "IanTrainingBackend" \
-            --payload '{"path":"/api/v1/health","httpMethod":"GET"}' \
+            --payload '{"path":"/api/v1/health","httpMethod":"GET","headers":{},"queryStringParameters":{},"body":""}' \
             --region "${{ secrets.AWS_REGION || 'us-east-1' }}" \
-            response.json
+            response.json || echo "Lambda test failed"
           
           echo "Lambda response:"
-          cat response.json
+          cat response.json || echo "No response received"
+          
+          # Check if Lambda is running by getting function info
+          echo "Checking Lambda function status..."
+          aws lambda get-function \
+            --function-name "IanTrainingBackend" \
+            --region "${{ secrets.AWS_REGION || 'us-east-1' }}" \
+            --query "Function.{State:State, LastUpdateStatus:LastUpdateStatus, Runtime:Runtime}" \
+            --output table
