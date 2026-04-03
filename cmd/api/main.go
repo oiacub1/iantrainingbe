@@ -52,15 +52,15 @@ type App struct {
 }
 
 type CreateExerciseRequest struct {
-	Name            string                       `json:"name"`
-	NameKey         string                       `json:"nameKey"`
-	DescriptionKey  string                       `json:"descriptionKey"`
-	YoutubeURL      string                       `json:"youtubeUrl"`
-	ThumbnailURL    string                       `json:"thumbnailUrl"`
-	MuscleGroups    []exerciseDomain.MuscleGroup `json:"muscleGroups"`
-	Difficulty      string                       `json:"difficulty"`
-	Equipment       []string                     `json:"equipment"`
-	TrainerID       string                       `json:"trainerId"`
+	Name           string                       `json:"name"`
+	NameKey        string                       `json:"nameKey"`
+	DescriptionKey string                       `json:"descriptionKey"`
+	YoutubeURL     string                       `json:"youtubeUrl"`
+	ThumbnailURL   string                       `json:"thumbnailUrl"`
+	MuscleGroups   []exerciseDomain.MuscleGroup `json:"muscleGroups"`
+	Difficulty     string                       `json:"difficulty"`
+	Equipment      []string                     `json:"equipment"`
+	TrainerID      string                       `json:"trainerId"`
 }
 
 type CreateUserRequest struct {
@@ -133,18 +133,18 @@ func main() {
 
 	// Initialize the routes map
 	routes = map[string]func(context.Context, events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error){
-		"GET /api/v1/health":                     app.healthCheck,
-		"POST /api/v1/auth/register":             app.register,
-		"POST /api/v1/auth/login":                app.login,
-		"POST /api/v1/auth/refresh":             app.refreshToken,
-		"POST /api/v1/auth/logout":              app.logout,
-		"POST /api/v1/exercises":                app.createExercise,
-		"GET /api/v1/exercises":                 app.listExercises,
-		"POST /api/v1/users":                     app.createUser,
-		"GET /api/v1/users":                     app.getUser,
-		"POST /api/v1/trainers/*/students":      app.assignTrainer,
+		"GET /api/v1/health":                               app.healthCheck,
+		"POST /api/v1/auth/register":                       app.register,
+		"POST /api/v1/auth/login":                          app.login,
+		"POST /api/v1/auth/refresh":                        app.refreshToken,
+		"POST /api/v1/auth/logout":                         app.logout,
+		"POST /api/v1/exercises":                           app.createExercise,
+		"GET /api/v1/exercises":                            app.listExercises,
+		"POST /api/v1/users":                               app.createUser,
+		"GET /api/v1/users":                                app.getUser,
+		"POST /api/v1/trainers/*/students":                 app.assignTrainer,
 		"POST /api/v1/trainers/*/students/assign-by-email": app.assignTrainerByEmail,
-		"GET /api/v1/trainers/*/students":       app.listStudents,
+		"GET /api/v1/trainers/*/students":                  app.listStudents,
 	}
 
 	if os.Getenv("AWS_LAMBDA_FUNCTION_NAME") != "" {
@@ -153,12 +153,12 @@ func main() {
 	} else {
 		log.Info("Running in local server mode...")
 		http.HandleFunc("/", localHandler)
-		
+
 		port := serverConfig.App.Port
 		if port == "" {
 			port = "8080"
 		}
-		
+
 		log.Infof("Starting local server on port %s", port)
 		fmt.Println("Available endpoints:")
 		fmt.Println("  GET  /api/v1/health - Health check")
@@ -167,7 +167,7 @@ func main() {
 		fmt.Println("  GET  /api/v1/exercises - List exercises")
 		fmt.Println("  POST /api/v1/exercises - Create exercise")
 		fmt.Println("  ... and more")
-		
+
 		go func() {
 			if err := http.ListenAndServe(":"+port, nil); err != nil {
 				log.Error("failed to start server", err)
@@ -197,14 +197,14 @@ func router(ctx context.Context, request events.APIGatewayProxyRequest) (events.
 
 	// Create route key
 	routeKey := fmt.Sprintf("%s %s", method, path)
-	
+
 	// Handle dynamic routes (with wildcards)
 	handler, exists := routes[routeKey]
 	if !exists {
 		// Try to match dynamic routes
 		handler = matchDynamicRoute(method, path)
 		if handler == nil {
-			return errorResponse(404, "Route not found")
+			return errorResponse(404, "Route not found "+routeKey)
 		}
 	}
 
@@ -241,7 +241,7 @@ func matchDynamicRoute(method, path string) func(context.Context, events.APIGate
 	if method == "GET" && strings.Contains(path, "/trainers/") && strings.HasSuffix(path, "/students") {
 		return app.listStudents
 	}
-	
+
 	return nil
 }
 
@@ -338,8 +338,8 @@ func (a *App) createExercise(ctx context.Context, request events.APIGatewayProxy
 	}
 
 	return jsonResponse(201, map[string]interface{}{
-		"message":   "Exercise created successfully",
-		"exercise":  ex,
+		"message":  "Exercise created successfully",
+		"exercise": ex,
 	})
 }
 
@@ -450,8 +450,8 @@ func (a *App) getUser(ctx context.Context, request events.APIGatewayProxyRequest
 			return errorResponse(404, "Student not found")
 		}
 		return jsonResponse(200, map[string]interface{}{
-			"message":  "Student retrieved successfully",
-			"student":  student,
+			"message": "Student retrieved successfully",
+			"student": student,
 		})
 	} else if userType == "trainer" {
 		trainer, err := a.userService.GetTrainer(ctx, id)
@@ -527,9 +527,9 @@ func (a *App) assignTrainerByEmail(ctx context.Context, request events.APIGatewa
 	}
 
 	return jsonResponse(200, map[string]interface{}{
-		"message":    "Trainer assigned successfully",
-		"trainerId":  trainerID,
-		"studentId":  studentID,
+		"message":   "Trainer assigned successfully",
+		"trainerId": trainerID,
+		"studentId": studentID,
 	})
 }
 
@@ -546,8 +546,8 @@ func (a *App) listStudents(ctx context.Context, request events.APIGatewayProxyRe
 	}
 
 	return jsonResponse(200, map[string]interface{}{
-		"message":   "Students retrieved successfully",
-		"students":  students,
+		"message":  "Students retrieved successfully",
+		"students": students,
 	})
 }
 
