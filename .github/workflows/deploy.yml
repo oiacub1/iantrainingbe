@@ -104,30 +104,39 @@ jobs:
 
     - name: Update Lambda function code
       run: |
-        echo "Updating Lambda functions..."
+        echo "Updating API Lambda function..."
         
-        # Find all built Lambda functions
-        for lambda_zip in bin/*/bootstrap.zip; do
-          if [ -f "$lambda_zip" ]; then
-            lambda_name=$(basename $(dirname "$lambda_zip"))
-            function_name="training-platform-$lambda_name"
+        # Check if Lambda zip exists
+        if [ -f "bin/lambda/bootstrap.zip" ]; then
+          function_name="IanTrainingBackend"
+          
+          echo "Updating Lambda function: $function_name"
+          
+          # Check if Lambda function exists
+          if aws lambda get-function --function-name "$function_name" --region "$AWS_REGION" 2>/dev/null; then
+            # Update existing function
+            aws lambda update-function-code \
+              --function-name "$function_name" \
+              --zip-file "fileb://bin/lambda/bootstrap.zip" \
+              --region "$AWS_REGION"
+            echo "Updated Lambda function: $function_name"
+          else
+            echo "Lambda function $function_name does not exist. Creating new function..."
             
-            echo "Updating Lambda function: $function_name"
-            
-            # Check if Lambda function exists
-            if aws lambda get-function --function-name "$function_name" --region "$AWS_REGION" 2>/dev/null; then
-              # Update existing function
-              aws lambda update-function-code \
-                --function-name "$function_name" \
-                --zip-file "fileb://$lambda_zip" \
-                --region "$AWS_REGION"
-              echo "Updated Lambda function: $function_name"
-            else
-              echo "Lambda function $function_name does not exist. Skipping update."
-              echo "Note: Lambda function creation should be handled by Terraform infrastructure."
-            fi
+            # Create new Lambda function
+            aws lambda create-function \
+              --function-name "$function_name" \
+              --runtime go1.x \
+              --handler main \
+              --zip-file "fileb://bin/lambda/bootstrap.zip" \
+              --role arn:aws:iam::234541249007:role/lambda-execution-role \
+              --region "$AWS_REGION"
+            echo "Created Lambda function: $function_name"
           fi
-        done
+        else
+          echo "Lambda zip not found. Run 'make build ENV=lambda' first."
+          exit 1
+        fi
 
     - name: Verify deployment
       run: |
@@ -135,7 +144,15 @@ jobs:
         
         # List Lambda functions
         echo "Available Lambda functions:"
-        aws lambda list-functions --region "$AWS_REGION" --query "Functions[?starts_with(FunctionName, 'training-platform-')].FunctionName" --output table
+        aws lambda list-functions --region "$AWS_REGION" --query "Functions[?contains(FunctionName, 'Training') || contains(FunctionName, 'Ian')].FunctionName" --output table
+        
+        # Verify our specific Lambda
+        echo "API Lambda function details:"
+        aws lambda get-function \
+          --function-name "IanTrainingBackend" \
+          --region "$AWS_REGION" \
+          --query "Function.{FunctionName:FunctionName, Runtime:Runtime, Handler:Handler, CodeSize:CodeSize, LastModified:LastModified}" \
+          --output table || echo "Lambda function not found"
         
         # Verify DynamoDB table
         echo "DynamoDB table status:"

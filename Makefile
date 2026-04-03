@@ -79,7 +79,7 @@ deploy:
 		exit 1; \
 	fi
 	@aws lambda update-function-code \
-		--function-name training-platform-api \
+		--function-name IanTrainingBackend \
 		--zip-file fileb://$(BINARY_DIR)/lambda/bootstrap.zip
 	@echo "Deploy complete!"
 
