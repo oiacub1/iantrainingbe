@@ -191,6 +191,7 @@ func router(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events
 	}
 
 	path := request.RawPath
+	path = strings.Replace(path, "/prod", "", 1)
 	method := strings.ToUpper(request.RequestContext.HTTP.Method)
 
 	log.Infof("Received request: %s %s", method, path)
