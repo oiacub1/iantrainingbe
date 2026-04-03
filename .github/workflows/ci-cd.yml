@@ -170,24 +170,32 @@ jobs:
         run: |
           echo "Testing Lambda function..."
           
-          # Create test payload file
-          echo '{"path":"/api/v1/health","httpMethod":"GET","headers":{},"queryStringParameters":{},"body":""}' > test-payload.json
-          
-          # Simple test - just check if Lambda responds
-          echo "Testing basic Lambda invocation..."
-          aws lambda invoke \
-            --function-name "IanTrainingBackend" \
-            --payload file://test-payload.json \
-            --region "${{ secrets.AWS_REGION || 'us-east-1' }}" \
-            response.json || echo "Lambda test failed"
-          
-          echo "Lambda response:"
-          cat response.json || echo "No response received"
-          
           # Check if Lambda is running by getting function info
           echo "Checking Lambda function status..."
           aws lambda get-function \
             --function-name "IanTrainingBackend" \
             --region "${{ secrets.AWS_REGION || 'us-east-1' }}" \
-            --query "Function.{State:State, LastUpdateStatus:LastUpdateStatus, Runtime:Runtime}" \
+            --query "Function.{State:State, LastUpdateStatus:LastUpdateStatus, Runtime:Runtime, CodeSize:CodeSize}" \
+            --output table
+          
+          # Check if function is active
+          FUNCTION_STATUS=$(aws lambda get-function \
+            --function-name "IanTrainingBackend" \
+            --region "${{ secrets.AWS_REGION || 'us-east-1' }}" \
+            --query "Function.State" \
+            --output text)
+          
+          if [ "$FUNCTION_STATUS" = "Active" ]; then
+            echo "✅ Lambda function is Active and ready"
+          else
+            echo "❌ Lambda function status: $FUNCTION_STATUS"
+            exit 1
+          fi
+          
+          # Get function configuration
+          echo "Function configuration:"
+          aws lambda get-function-configuration \
+            --function-name "IanTrainingBackend" \
+            --region "${{ secrets.AWS_REGION || 'us-east-1' }}" \
+            --query "{Runtime:Runtime,Handler:Handler,Role:Role,MemorySize:MemorySize,Timeout:Timeout}" \
             --output table
