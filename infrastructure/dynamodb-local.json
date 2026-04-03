@@ -1,5 +1,5 @@
 {
-  "TableName": "iantraining",
+  "TableName": "training-platform",
   "KeySchema": [
     {
       "AttributeName": "PK",

@@ -81,6 +81,7 @@ type RegisterRequest struct {
 	Email    string `json:"email"`
 	Password string `json:"password"`
 	Role     string `json:"role"`
+	Name     string `json:"name"`
 }
 
 func NewApp(exerciseService *exerciseService.Service, userService *userService.Service, authService *authService.Service) *App {
@@ -113,13 +114,23 @@ func main() {
 		panic(fmt.Sprintf("failed to load AWS config: %v", err))
 	}
 
-	// Create DynamoDB client
-	dynamoClient := dynamodb.NewFromConfig(cfg)
+	// Create DynamoDB client with local endpoint if configured
+	var dynamoClient *dynamodb.Client
+	if serverConfig.DynamoDB.Endpoint != "" {
+		log.Infof("Using local DynamoDB endpoint: %s", serverConfig.DynamoDB.Endpoint)
+		dynamoClient = dynamodb.NewFromConfig(cfg, func(o *dynamodb.Options) {
+			o.BaseEndpoint = &serverConfig.DynamoDB.Endpoint
+		})
+	} else {
+		log.Info("Using AWS DynamoDB")
+		dynamoClient = dynamodb.NewFromConfig(cfg)
+	}
 
 	// Create repositories
-	authRepo := dynamodbRepo.NewAuthRepository(dynamoClient, "training-platform")
-	userRepo := dynamodbRepo.NewUserRepository(dynamoClient, "training-platform")
-	exerciseRepo := dynamodbRepo.NewExerciseRepository(dynamoClient, "training-platform")
+	tableName := serverConfig.DynamoDB.TableName
+	authRepo := dynamodbRepo.NewAuthRepository(dynamoClient, tableName)
+	userRepo := dynamodbRepo.NewUserRepository(dynamoClient, tableName)
+	exerciseRepo := dynamodbRepo.NewExerciseRepository(dynamoClient, tableName)
 
 	// Create JWT service
 	jwtService := authService.NewJWTService("secret", time.Hour*1, time.Hour*24, "iantraining")
@@ -583,7 +594,9 @@ func (a *App) register(ctx context.Context, request events.APIGatewayV2HTTPReque
 	user := &userDomain.User{
 		ID:        uuid.New().String(),
 		Email:     req.Email,
+		Name:      req.Name,
 		Role:      userDomain.UserRole(req.Role),
+		Status:    userDomain.StatusActive,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
@@ -591,7 +604,7 @@ func (a *App) register(ctx context.Context, request events.APIGatewayV2HTTPReque
 	// Create credentials first
 	if err := a.authService.CreateCredentials(ctx, user.ID, req.Email, req.Password); err != nil {
 		log.Error("failed to create credentials", err)
-		return errorResponse(500, "Failed to create user credentials")
+		return errorResponse(500, fmt.Sprintf("Failed to create user credentials: %v", err))
 	}
 
 	// Create user based on role
@@ -610,7 +623,7 @@ func (a *App) register(ctx context.Context, request events.APIGatewayV2HTTPReque
 		}
 		if err := a.userService.CreateStudent(ctx, student); err != nil {
 			log.Error("failed to create student", err)
-			return errorResponse(500, "Failed to create student")
+			return errorResponse(500, fmt.Sprintf("Failed to create student: %v", err))
 		}
 	} else if req.Role == string(userDomain.RoleTrainer) {
 		trainer := &userDomain.Trainer{
@@ -624,7 +637,7 @@ func (a *App) register(ctx context.Context, request events.APIGatewayV2HTTPReque
 		}
 		if err := a.userService.CreateTrainer(ctx, trainer); err != nil {
 			log.Error("failed to create trainer", err)
-			return errorResponse(500, "Failed to create trainer")
+			return errorResponse(500, fmt.Sprintf("Failed to create trainer: %v", err))
 		}
 	} else {
 		return errorResponse(400, "Invalid user type. Must be 'TRAINER' or 'STUDENT'")
