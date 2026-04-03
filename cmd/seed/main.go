@@ -25,7 +25,7 @@ func main() {
 
 	// Create DynamoDB client
 	dynamoClient := dynamodb.NewFromConfig(cfg)
-	tableName := "iantraining" // Change if needed
+	tableName := "training-platform"
 
 	// Initialize repositories
 	userRepo := dynamodbRepo.NewUserRepository(dynamoClient, tableName)
@@ -79,10 +79,10 @@ func main() {
 			trainer := &userDomain.Trainer{
 				User: *userEntity,
 				Metadata: userDomain.TrainerMetadata{
-					Specializations:  []string{"Strength", "Cardio"},
-					Certifications:   []string{"NASM-CPT"},
-					Bio:              "Experienced personal trainer",
-					YearsExperience:  5,
+					Specializations: []string{"Strength", "Cardio"},
+					Certifications:  []string{"NASM-CPT"},
+					Bio:             "Experienced personal trainer",
+					YearsExperience: 5,
 				},
 			}
 			if err := userRepo.CreateTrainer(ctx, trainer); err != nil {

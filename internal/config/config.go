@@ -32,7 +32,7 @@ type AppConfig struct {
 func Load() (*Config, error) {
 	cfg := &Config{
 		DynamoDB: DynamoDBConfig{
-			TableName: getEnv("DYNAMODB_TABLE_NAME", "iantraining"),
+			TableName: getEnv("DYNAMODB_TABLE_NAME", "training-platform"),
 			Region:    getEnv("AWS_REGION", "us-east-1"),
 			Endpoint:  getEnv("DYNAMODB_ENDPOINT", ""),
 		},
