@@ -43,7 +43,7 @@ var corsHeaders = map[string]string{
 }
 
 // Map to hold route handlers for O(1) lookup
-var routes map[string]func(context.Context, events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error)
+var routes map[string]func(context.Context, events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse
 
 type App struct {
 	exerciseService *exerciseService.Service
@@ -132,7 +132,7 @@ func main() {
 	)
 
 	// Initialize the routes map
-	routes = map[string]func(context.Context, events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error){
+	routes = map[string]func(context.Context, events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse{
 		"GET /api/v1/health":                               app.healthCheck,
 		"POST /api/v1/auth/register":                       app.register,
 		"POST /api/v1/auth/login":                          app.login,
@@ -181,37 +181,19 @@ func main() {
 	<-ctx.Done()
 }
 
-func router(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	// Debug: Log full request details
-	log.Infof("=== REQUEST DEBUG ===")
-	log.Infof("Path: %s", request.Path)
-	log.Infof("Resource: %s", request.Resource)
-	log.Infof("HTTPMethod: %s", request.HTTPMethod)
-	log.Infof("RequestContext.Path: %s", request.RequestContext.Path)
-	log.Infof("RequestContext.ResourcePath: %s", request.RequestContext.ResourcePath)
-	log.Infof("PathParameters: %v", request.PathParameters)
-	log.Infof("====================")
-
+func router(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events.APIGatewayV2HTTPResponse, error) {
 	// Handle preflight OPTIONS request
-	if request.HTTPMethod == "OPTIONS" {
-		return events.APIGatewayProxyResponse{
+	if request.RequestContext.HTTP.Method == "OPTIONS" {
+		return events.APIGatewayV2HTTPResponse{
 			StatusCode: 200,
 			Headers:    corsHeaders,
 		}, nil
 	}
 
-	// Use the most complete path available
-	path := request.Path
-	if request.RequestContext.Path != "" {
-		path = request.RequestContext.Path
-	}
-	if request.Resource != "" && request.Resource != path {
-		log.Infof("Using Resource path: %s instead of Path: %s", request.Resource, path)
-		path = request.Resource
-	}
-	method := request.HTTPMethod
+	path := request.RawPath
+	method := strings.ToUpper(request.RequestContext.HTTP.Method)
 
-	log.Infof("Final route: %s %s", method, path)
+	log.Infof("Received request: %s %s", method, path)
 
 	// Create route key
 	routeKey := fmt.Sprintf("%s %s", method, path)
@@ -222,14 +204,15 @@ func router(ctx context.Context, request events.APIGatewayProxyRequest) (events.
 		// Try to match dynamic routes
 		handler = matchDynamicRoute(method, path)
 		if handler == nil {
-			return errorResponse(404, "Route not found "+routeKey)
+			return events.APIGatewayV2HTTPResponse{
+				StatusCode: 404,
+				Headers:    corsHeaders,
+				Body:       fmt.Sprintf(`{"error":"Route not found: %s"}`, routeKey),
+			}, nil
 		}
 	}
 
-	response, err := handler(ctx, request)
-	if err != nil {
-		return errorResponse(500, fmt.Sprintf("Internal server error: %v", err))
-	}
+	response := handler(ctx, request)
 
 	// Add CORS headers to all responses
 	if response.Headers == nil {
@@ -242,7 +225,7 @@ func router(ctx context.Context, request events.APIGatewayProxyRequest) (events.
 	return response, nil
 }
 
-func matchDynamicRoute(method, path string) func(context.Context, events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func matchDynamicRoute(method, path string) func(context.Context, events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
 	// Handle dynamic routes
 	if method == "GET" && strings.HasPrefix(path, "/api/v1/exercises/") {
 		return app.getExercise
@@ -290,9 +273,10 @@ func localHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	req := events.APIGatewayProxyRequest{
-		Path:                  r.URL.Path,
-		HTTPMethod:            r.Method,
+	// Create APIGatewayV2HTTPRequest (HTTP API format)
+	req := events.APIGatewayV2HTTPRequest{
+		RawPath:               r.URL.Path,
+		RequestContext:        events.APIGatewayV2HTTPRequestContext{HTTP: events.APIGatewayV2HTTPRequestContextHTTPDescription{Method: r.Method}},
 		Headers:               headers,
 		Body:                  string(body),
 		QueryStringParameters: queryParams,
@@ -312,7 +296,7 @@ func localHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Health check
-func (a *App) healthCheck(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (a *App) healthCheck(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
 	health := map[string]interface{}{
 		"status":    "healthy",
 		"timestamp": time.Now().UTC().Format(time.RFC3339),
@@ -329,7 +313,7 @@ func (a *App) healthCheck(ctx context.Context, request events.APIGatewayProxyReq
 }
 
 // Exercise handlers
-func (a *App) createExercise(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (a *App) createExercise(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
 	var req CreateExerciseRequest
 	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
 		return errorResponse(400, "Invalid request body")
@@ -361,8 +345,8 @@ func (a *App) createExercise(ctx context.Context, request events.APIGatewayProxy
 	})
 }
 
-func (a *App) getExercise(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	pathParts := strings.Split(strings.Trim(request.Path, "/"), "/")
+func (a *App) getExercise(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
 	if len(pathParts) < 4 {
 		return errorResponse(400, "Invalid exercise ID")
 	}
@@ -379,7 +363,7 @@ func (a *App) getExercise(ctx context.Context, request events.APIGatewayProxyReq
 	})
 }
 
-func (a *App) listExercises(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (a *App) listExercises(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
 	trainerID := request.QueryStringParameters["trainerId"]
 	if trainerID == "" {
 		return errorResponse(400, "trainerId query parameter is required")
@@ -397,7 +381,7 @@ func (a *App) listExercises(ctx context.Context, request events.APIGatewayProxyR
 }
 
 // User handlers
-func (a *App) createUser(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (a *App) createUser(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
 	var req CreateUserRequest
 	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
 		return errorResponse(400, "Invalid request body")
@@ -450,8 +434,8 @@ func (a *App) createUser(ctx context.Context, request events.APIGatewayProxyRequ
 	})
 }
 
-func (a *App) getUser(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	pathParts := strings.Split(strings.Trim(request.Path, "/"), "/")
+func (a *App) getUser(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
 	if len(pathParts) < 4 {
 		return errorResponse(400, "Invalid user ID")
 	}
@@ -485,8 +469,8 @@ func (a *App) getUser(ctx context.Context, request events.APIGatewayProxyRequest
 	return errorResponse(400, "User type query parameter is required (student|trainer)")
 }
 
-func (a *App) assignTrainer(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	pathParts := strings.Split(strings.Trim(request.Path, "/"), "/")
+func (a *App) assignTrainer(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
 	if len(pathParts) < 5 {
 		return errorResponse(400, "Invalid trainer ID")
 	}
@@ -506,8 +490,8 @@ func (a *App) assignTrainer(ctx context.Context, request events.APIGatewayProxyR
 	})
 }
 
-func (a *App) assignTrainerByEmail(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	pathParts := strings.Split(strings.Trim(request.Path, "/"), "/")
+func (a *App) assignTrainerByEmail(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
 	if len(pathParts) < 6 {
 		return errorResponse(400, "Invalid trainer ID")
 	}
@@ -551,8 +535,8 @@ func (a *App) assignTrainerByEmail(ctx context.Context, request events.APIGatewa
 	})
 }
 
-func (a *App) listStudents(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
-	pathParts := strings.Split(strings.Trim(request.Path, "/"), "/")
+func (a *App) listStudents(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
 	if len(pathParts) < 5 {
 		return errorResponse(400, "Invalid trainer ID")
 	}
@@ -570,7 +554,7 @@ func (a *App) listStudents(ctx context.Context, request events.APIGatewayProxyRe
 }
 
 // Auth handlers
-func (a *App) login(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (a *App) login(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
 	var req authDomain.AuthRequest
 	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
 		return errorResponse(400, "Invalid request body")
@@ -588,7 +572,7 @@ func (a *App) login(ctx context.Context, request events.APIGatewayProxyRequest) 
 	return jsonResponse(200, response)
 }
 
-func (a *App) register(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (a *App) register(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
 	var req RegisterRequest
 	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
 		return errorResponse(400, "Invalid request body")
@@ -660,7 +644,7 @@ func (a *App) register(ctx context.Context, request events.APIGatewayProxyReques
 	return jsonResponse(201, response)
 }
 
-func (a *App) refreshToken(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (a *App) refreshToken(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
 	var req authDomain.RefreshRequest
 	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
 		return errorResponse(400, "Invalid request body")
@@ -678,7 +662,7 @@ func (a *App) refreshToken(ctx context.Context, request events.APIGatewayProxyRe
 	return jsonResponse(200, tokenPair)
 }
 
-func (a *App) logout(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+func (a *App) logout(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
 	// Get token from Authorization header
 	authHeader := request.Headers["Authorization"]
 	if authHeader == "" {
@@ -700,24 +684,24 @@ func (a *App) logout(ctx context.Context, request events.APIGatewayProxyRequest)
 }
 
 // Helper functions
-func jsonResponse(statusCode int, body interface{}) (events.APIGatewayProxyResponse, error) {
+func jsonResponse(statusCode int, body interface{}) events.APIGatewayV2HTTPResponse {
 	jsonBody, _ := json.Marshal(body)
-	return events.APIGatewayProxyResponse{
+	return events.APIGatewayV2HTTPResponse{
 		StatusCode: statusCode,
 		Headers: map[string]string{
 			"Content-Type": "application/json",
 		},
 		Body: string(jsonBody),
-	}, nil
+	}
 }
 
-func errorResponse(statusCode int, message string) (events.APIGatewayProxyResponse, error) {
+func errorResponse(statusCode int, message string) events.APIGatewayV2HTTPResponse {
 	body, _ := json.Marshal(map[string]string{"error": message})
-	return events.APIGatewayProxyResponse{
+	return events.APIGatewayV2HTTPResponse{
 		StatusCode: statusCode,
 		Headers: map[string]string{
 			"Content-Type": "application/json",
 		},
 		Body: string(body),
-	}, nil
+	}
 }
