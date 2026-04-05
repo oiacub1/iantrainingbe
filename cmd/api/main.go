@@ -509,7 +509,14 @@ func (a *App) assignTrainer(ctx context.Context, request events.APIGatewayV2HTTP
 	if len(pathParts) < 5 {
 		return errorResponse(400, "Invalid trainer ID")
 	}
-	trainerID := pathParts[3]
+
+	// Handle both local (/api/v1/...) and production (/prod/api/v1/...) paths
+	var trainerID string
+	if pathParts[0] == "prod" && len(pathParts) >= 6 {
+		trainerID = pathParts[4] // /prod/api/v1/trainers/ID/...
+	} else {
+		trainerID = pathParts[3] // /api/v1/trainers/ID/...
+	}
 
 	var req AssignTrainerRequest
 	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
@@ -538,8 +545,21 @@ func (a *App) assignTrainerByEmail(ctx context.Context, request events.APIGatewa
 		return errorResponse(400, "Invalid trainer ID")
 	}
 
-	trainerID := pathParts[3]
-	log.Infof("Extracted trainerID from pathParts[3]: %s", trainerID)
+	// Handle both local (/api/v1/...) and production (/prod/api/v1/...) paths
+	var trainerID string
+	if pathParts[0] == "prod" && len(pathParts) >= 7 {
+		trainerID = pathParts[4] // /prod/api/v1/trainers/ID/...
+	} else {
+		trainerID = pathParts[3] // /api/v1/trainers/ID/...
+	}
+
+	log.Infof("Extracted trainerID: %s (pathParts[0]=%s, using index=%d)", trainerID, pathParts[0], func() int {
+		if pathParts[0] == "prod" {
+			return 4
+		} else {
+			return 3
+		}
+	}())
 
 	var req AssignTrainerByEmailRequest
 	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
@@ -609,7 +629,14 @@ func (a *App) listStudents(ctx context.Context, request events.APIGatewayV2HTTPR
 	if len(pathParts) < 5 {
 		return errorResponse(400, "Invalid trainer ID")
 	}
-	trainerID := pathParts[3]
+
+	// Handle both local (/api/v1/...) and production (/prod/api/v1/...) paths
+	var trainerID string
+	if pathParts[0] == "prod" && len(pathParts) >= 6 {
+		trainerID = pathParts[4] // /prod/api/v1/trainers/ID/...
+	} else {
+		trainerID = pathParts[3] // /api/v1/trainers/ID/...
+	}
 
 	students, _, err := a.userService.ListStudentsByTrainer(ctx, trainerID, 50, "")
 	if err != nil {
@@ -759,7 +786,14 @@ func (a *App) listRoutinesByTrainer(ctx context.Context, request events.APIGatew
 	if len(pathParts) < 5 {
 		return errorResponse(400, "Invalid trainer ID")
 	}
-	trainerID := pathParts[3]
+
+	// Handle both local (/api/v1/...) and production (/prod/api/v1/...) paths
+	var trainerID string
+	if pathParts[0] == "prod" && len(pathParts) >= 6 {
+		trainerID = pathParts[4] // /prod/api/v1/trainers/ID/...
+	} else {
+		trainerID = pathParts[3] // /api/v1/trainers/ID/...
+	}
 
 	routines, _, err := a.routineService.ListRoutinesByTrainer(ctx, trainerID, 50, "")
 	if err != nil {
@@ -801,7 +835,14 @@ func (a *App) createRoutine(ctx context.Context, request events.APIGatewayV2HTTP
 	if len(pathParts) < 5 {
 		return errorResponse(400, "Invalid trainer ID")
 	}
-	trainerID := pathParts[3]
+
+	// Handle both local (/api/v1/...) and production (/prod/api/v1/...) paths
+	var trainerID string
+	if pathParts[0] == "prod" && len(pathParts) >= 6 {
+		trainerID = pathParts[4] // /prod/api/v1/trainers/ID/...
+	} else {
+		trainerID = pathParts[3] // /api/v1/trainers/ID/...
+	}
 
 	var req struct {
 		Name        string `json:"name"`
@@ -833,8 +874,17 @@ func (a *App) deleteRoutine(ctx context.Context, request events.APIGatewayV2HTTP
 	if len(pathParts) < 6 {
 		return errorResponse(400, "Invalid routine ID")
 	}
-	trainerID := pathParts[3]
-	routineID := pathParts[5]
+
+	// Handle both local (/api/v1/...) and production (/prod/api/v1/...) paths
+	var trainerID string
+	var routineID string
+	if pathParts[0] == "prod" && len(pathParts) >= 7 {
+		trainerID = pathParts[4] // /prod/api/v1/trainers/ID/routines/routineID
+		routineID = pathParts[6]
+	} else {
+		trainerID = pathParts[3] // /api/v1/trainers/ID/routines/routineID
+		routineID = pathParts[5]
+	}
 
 	if err := a.routineService.DeleteRoutine(ctx, trainerID, routineID); err != nil {
 		log.Error("failed to delete routine", err)
@@ -851,8 +901,17 @@ func (a *App) updateRoutine(ctx context.Context, request events.APIGatewayV2HTTP
 	if len(pathParts) < 6 {
 		return errorResponse(400, "Invalid routine ID")
 	}
-	trainerID := pathParts[3]
-	routineID := pathParts[5]
+
+	// Handle both local (/api/v1/...) and production (/prod/api/v1/...) paths
+	var trainerID string
+	var routineID string
+	if pathParts[0] == "prod" && len(pathParts) >= 7 {
+		trainerID = pathParts[4] // /prod/api/v1/trainers/ID/routines/routineID
+		routineID = pathParts[6]
+	} else {
+		trainerID = pathParts[3] // /api/v1/trainers/ID/routines/routineID
+		routineID = pathParts[5]
+	}
 
 	var req struct {
 		Name        string `json:"name"`
@@ -884,8 +943,17 @@ func (a *App) createWorkoutDay(ctx context.Context, request events.APIGatewayV2H
 	if len(pathParts) < 7 {
 		return errorResponse(400, "Invalid routine ID")
 	}
-	trainerID := pathParts[3]
-	routineID := pathParts[5]
+
+	// Handle both local (/api/v1/...) and production (/prod/api/v1/...) paths
+	var trainerID string
+	var routineID string
+	if pathParts[0] == "prod" && len(pathParts) >= 8 {
+		trainerID = pathParts[4] // /prod/api/v1/trainers/ID/routines/routineID/workout-days
+		routineID = pathParts[6]
+	} else {
+		trainerID = pathParts[3] // /api/v1/trainers/ID/routines/routineID/workout-days
+		routineID = pathParts[5]
+	}
 
 	var req struct {
 		WeekNumber int                         `json:"weekNumber"`
