@@ -903,8 +903,14 @@ func (a *App) deleteRoutine(ctx context.Context, request events.APIGatewayV2HTTP
 }
 
 func (a *App) updateRoutine(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	log.Infof("updateRoutine called with path: %s", request.RawPath)
+	log.Infof("Request body: %s", request.Body)
+
 	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
+	log.Infof("Path parts: %+v", pathParts)
+
 	if len(pathParts) < 6 {
+		log.Errorf("Invalid path parts length: %d, expected at least 6", len(pathParts))
 		return errorResponse(400, "Invalid routine ID")
 	}
 
@@ -919,6 +925,8 @@ func (a *App) updateRoutine(ctx context.Context, request events.APIGatewayV2HTTP
 		routineID = pathParts[5]
 	}
 
+	log.Infof("Extracted trainerID: %s, routineID: %s", trainerID, routineID)
+
 	var req struct {
 		Name        string                     `json:"name"`
 		Description string                     `json:"description"`
@@ -930,6 +938,8 @@ func (a *App) updateRoutine(ctx context.Context, request events.APIGatewayV2HTTP
 		return errorResponse(400, "Invalid request body")
 	}
 
+	log.Infof("Updating routine %s for trainer %s", routineID, trainerID)
+
 	routine, err := a.routineService.UpdateRoutine(ctx, trainerID, routineID, &routineDomain.UpdateRoutineRequest{
 		Name:        req.Name,
 		Description: req.Description,
@@ -937,9 +947,11 @@ func (a *App) updateRoutine(ctx context.Context, request events.APIGatewayV2HTTP
 		WorkoutDays: req.WorkoutDays,
 	})
 	if err != nil {
-		log.Error("failed to update routine", err)
+		log.Errorf("Failed to update routine %s for trainer %s: %v", routineID, trainerID, err)
 		return errorResponse(500, fmt.Sprintf("Failed to update routine: %v", err))
 	}
+
+	log.Infof("Successfully updated routine %s", routineID)
 
 	return jsonResponse(200, map[string]interface{}{
 		"data": routine,
