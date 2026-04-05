@@ -526,11 +526,20 @@ func (a *App) assignTrainer(ctx context.Context, request events.APIGatewayV2HTTP
 }
 
 func (a *App) assignTrainerByEmail(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	log.Infof("assignTrainerByEmail called with path: %s", request.RawPath)
+	log.Infof("Request method: %s", request.RequestContext.HTTP.Method)
+	log.Infof("Request body: %s", request.Body)
+
 	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
+	log.Infof("Path parts: %+v", pathParts)
+
 	if len(pathParts) < 6 {
+		log.Errorf("Invalid path parts length: %d, expected at least 6", len(pathParts))
 		return errorResponse(400, "Invalid trainer ID")
 	}
+
 	trainerID := pathParts[3]
+	log.Infof("Extracted trainerID from pathParts[3]: %s", trainerID)
 
 	var req AssignTrainerByEmailRequest
 	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
@@ -539,10 +548,20 @@ func (a *App) assignTrainerByEmail(ctx context.Context, request events.APIGatewa
 	}
 
 	if req.Email == "" {
+		log.Error("Email is empty in request", fmt.Errorf("empty email"))
 		return errorResponse(400, "email is required")
 	}
 
 	log.Infof("Assigning student with email %s to trainer %s", req.Email, trainerID)
+
+	// First, verify the trainer exists
+	log.Infof("Verifying trainer %s exists...", trainerID)
+	trainer, trainerErr := a.userService.GetTrainer(ctx, trainerID)
+	if trainerErr != nil {
+		log.Errorf("Trainer verification failed for ID %s: %v", trainerID, trainerErr)
+		return errorResponse(500, fmt.Sprintf("Failed to verify trainer: %v", trainerErr))
+	}
+	log.Infof("Trainer verified: %+v", trainer)
 
 	studentID, err := a.authService.ResolveUserIDByEmail(ctx, req.Email)
 	if err != nil {
@@ -572,7 +591,7 @@ func (a *App) assignTrainerByEmail(ctx context.Context, request events.APIGatewa
 	log.Infof("Assigning student %s to trainer %s", studentID, trainerID)
 
 	if err := a.userService.AssignStudentToTrainer(ctx, trainerID, studentID); err != nil {
-		log.Error("failed to assign student to trainer", err)
+		log.Errorf("Failed to assign student %s to trainer %s: %v", studentID, trainerID, err)
 		return errorResponse(500, fmt.Sprintf("Failed to assign trainer: %v", err))
 	}
 
