@@ -244,47 +244,62 @@ func router(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events
 }
 
 func matchDynamicRoute(method, path string) func(context.Context, events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	log.Infof("matchDynamicRoute called: method=%s, path=%s", method, path)
+
 	// Handle dynamic routes - more specific routes first
 	if method == "GET" && strings.HasPrefix(path, "/api/v1/exercises/") {
+		log.Infof("Routing to getExercise")
 		return app.getExercise
 	}
 	if method == "GET" && strings.HasPrefix(path, "/api/v1/users/") {
+		log.Infof("Routing to getUser")
 		return app.getUser
 	}
 	if method == "GET" && strings.HasPrefix(path, "/api/v1/routines/") && !strings.Contains(path, "/trainers/") {
+		log.Infof("Routing to getRoutine (path: %s, contains trainers: %v)", path, strings.Contains(path, "/trainers/"))
 		return app.getRoutine
 	}
 	if method == "POST" && strings.Contains(path, "/trainers/") && strings.HasSuffix(path, "/students") {
 		return app.assignTrainer
 	}
 	if method == "POST" && strings.Contains(path, "/trainers/") && strings.HasSuffix(path, "/students/assign-by-email") {
+		log.Infof("Routing to assignTrainerByEmail")
 		return app.assignTrainerByEmail
 	}
 	if method == "GET" && strings.Contains(path, "/trainers/") && strings.HasSuffix(path, "/students") {
+		log.Infof("Routing to listStudents")
 		return app.listStudents
 	}
 	if method == "GET" && strings.Contains(path, "/trainers/") && strings.HasSuffix(path, "/routines") {
+		log.Infof("Routing to listRoutinesByTrainer")
 		return app.listRoutinesByTrainer
 	}
 	if method == "POST" && strings.Contains(path, "/trainers/") && strings.HasSuffix(path, "/routines") {
+		log.Infof("Routing to createRoutine")
 		return app.createRoutine
 	}
 	if method == "DELETE" && strings.Contains(path, "/trainers/") && strings.Contains(path, "/routines/") {
+		log.Infof("Routing to deleteRoutine")
 		return app.deleteRoutine
 	}
 	if method == "PUT" && strings.Contains(path, "/trainers/") && strings.Contains(path, "/routines/") {
+		log.Infof("Routing to updateRoutine")
 		return app.updateRoutine
 	}
 	if method == "POST" && strings.Contains(path, "/trainers/") && strings.Contains(path, "/routines/") && strings.HasSuffix(path, "/workout-days") {
+		log.Infof("Routing to createWorkoutDay")
 		return app.createWorkoutDay
 	}
 	if method == "PUT" && strings.Contains(path, "/trainers/") && strings.Contains(path, "/routines/") && strings.Contains(path, "/workout-days/") {
+		log.Infof("Routing to updateWorkoutDay")
 		return app.updateWorkoutDay
 	}
 	if method == "DELETE" && strings.Contains(path, "/trainers/") && strings.Contains(path, "/routines/") && strings.HasSuffix(path, "/workout-days") {
+		log.Infof("Routing to deleteWorkoutDays")
 		return app.deleteWorkoutDays
 	}
 
+	log.Infof("No route matched for method=%s, path=%s", method, path)
 	return nil
 }
 
