@@ -23,10 +23,12 @@ import (
 	appConfig "iantraining/internal/config"
 	authDomain "iantraining/internal/domain/auth"
 	exerciseDomain "iantraining/internal/domain/exercise"
+	routineDomain "iantraining/internal/domain/routine"
 	userDomain "iantraining/internal/domain/user"
 	dynamodbRepo "iantraining/internal/repository/dynamodb"
 	authService "iantraining/internal/service/auth"
 	exerciseService "iantraining/internal/service/exercise"
+	routineService "iantraining/internal/service/routine"
 	userService "iantraining/internal/service/user"
 	"iantraining/pkg/logger"
 )
@@ -49,6 +51,7 @@ type App struct {
 	exerciseService *exerciseService.Service
 	userService     *userService.Service
 	authService     *authService.Service
+	routineService  *routineService.Service
 }
 
 type CreateExerciseRequest struct {
@@ -84,11 +87,12 @@ type RegisterRequest struct {
 	Name     string `json:"name"`
 }
 
-func NewApp(exerciseService *exerciseService.Service, userService *userService.Service, authService *authService.Service) *App {
+func NewApp(exerciseService *exerciseService.Service, userService *userService.Service, authService *authService.Service, routineService *routineService.Service) *App {
 	return &App{
 		exerciseService: exerciseService,
 		userService:     userService,
 		authService:     authService,
+		routineService:  routineService,
 	}
 }
 
@@ -131,6 +135,7 @@ func main() {
 	authRepo := dynamodbRepo.NewAuthRepository(dynamoClient, tableName)
 	userRepo := dynamodbRepo.NewUserRepository(dynamoClient, tableName)
 	exerciseRepo := dynamodbRepo.NewExerciseRepository(dynamoClient, tableName)
+	routineRepo := dynamodbRepo.NewRoutineRepository(dynamoClient, tableName)
 
 	// Create JWT service
 	jwtService := authService.NewJWTService("secret", time.Hour*1, time.Hour*24, "iantraining")
@@ -140,6 +145,7 @@ func main() {
 		exerciseService.NewService(exerciseRepo),
 		userService.NewService(userRepo),
 		authService.NewService(authRepo, userRepo, jwtService),
+		routineService.NewService(routineRepo, userRepo),
 	)
 
 	// Initialize the routes map
@@ -245,6 +251,9 @@ func matchDynamicRoute(method, path string) func(context.Context, events.APIGate
 	if method == "GET" && strings.HasPrefix(path, "/api/v1/users/") {
 		return app.getUser
 	}
+	if method == "GET" && strings.HasPrefix(path, "/api/v1/routines/") {
+		return app.getRoutine
+	}
 	if method == "POST" && strings.Contains(path, "/trainers/") && strings.HasSuffix(path, "/students") {
 		return app.assignTrainer
 	}
@@ -253,6 +262,21 @@ func matchDynamicRoute(method, path string) func(context.Context, events.APIGate
 	}
 	if method == "GET" && strings.Contains(path, "/trainers/") && strings.HasSuffix(path, "/students") {
 		return app.listStudents
+	}
+	if method == "GET" && strings.Contains(path, "/trainers/") && strings.HasSuffix(path, "/routines") {
+		return app.listRoutinesByTrainer
+	}
+	if method == "POST" && strings.Contains(path, "/trainers/") && strings.HasSuffix(path, "/routines") {
+		return app.createRoutine
+	}
+	if method == "DELETE" && strings.Contains(path, "/trainers/") && strings.Contains(path, "/routines/") {
+		return app.deleteRoutine
+	}
+	if method == "PUT" && strings.Contains(path, "/trainers/") && strings.Contains(path, "/routines/") {
+		return app.updateRoutine
+	}
+	if method == "POST" && strings.Contains(path, "/trainers/") && strings.Contains(path, "/routines/") && strings.HasSuffix(path, "/workout-days") {
+		return app.createWorkoutDay
 	}
 
 	return nil
@@ -387,8 +411,7 @@ func (a *App) listExercises(ctx context.Context, request events.APIGatewayV2HTTP
 	}
 
 	return jsonResponse(200, map[string]interface{}{
-		"message":   "Exercises retrieved successfully",
-		"exercises": exercises,
+		"data": exercises,
 	})
 }
 
@@ -486,7 +509,7 @@ func (a *App) assignTrainer(ctx context.Context, request events.APIGatewayV2HTTP
 	if len(pathParts) < 5 {
 		return errorResponse(400, "Invalid trainer ID")
 	}
-	trainerID := pathParts[2]
+	trainerID := pathParts[3]
 
 	var req AssignTrainerRequest
 	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
@@ -507,10 +530,11 @@ func (a *App) assignTrainerByEmail(ctx context.Context, request events.APIGatewa
 	if len(pathParts) < 6 {
 		return errorResponse(400, "Invalid trainer ID")
 	}
-	trainerID := pathParts[2]
+	trainerID := pathParts[3]
 
 	var req AssignTrainerByEmailRequest
 	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
+		log.Error("failed to unmarshal request body", err)
 		return errorResponse(400, "Invalid request body")
 	}
 
@@ -518,27 +542,41 @@ func (a *App) assignTrainerByEmail(ctx context.Context, request events.APIGatewa
 		return errorResponse(400, "email is required")
 	}
 
+	log.Infof("Assigning student with email %s to trainer %s", req.Email, trainerID)
+
 	studentID, err := a.authService.ResolveUserIDByEmail(ctx, req.Email)
 	if err != nil {
 		if err == authDomain.ErrUserNotFound {
+			log.Infof("Student not found with email: %s", req.Email)
 			return errorResponse(404, "Student not found")
 		}
+		log.Error("failed to resolve user ID by email", err)
 		return errorResponse(500, fmt.Sprintf("Failed to find user by email: %v", err))
 	}
 
+	log.Infof("Found user ID %s for email %s", studentID, req.Email)
+
 	if _, err := a.userService.GetStudent(ctx, studentID); err != nil {
+		log.Infof("Failed to get student %s: %v", studentID, err)
 		if _, trainerErr := a.userService.GetTrainer(ctx, studentID); trainerErr == nil {
+			log.Infof("User %s is a trainer, not a student", studentID)
 			return errorResponse(400, "User is not a student")
 		}
 		if errors.Is(err, userDomain.ErrInvalidUserID) {
 			return errorResponse(400, "Invalid student ID")
 		}
+		log.Error("student not found", err)
 		return errorResponse(404, "Student not found")
 	}
 
+	log.Infof("Assigning student %s to trainer %s", studentID, trainerID)
+
 	if err := a.userService.AssignStudentToTrainer(ctx, trainerID, studentID); err != nil {
+		log.Error("failed to assign student to trainer", err)
 		return errorResponse(500, fmt.Sprintf("Failed to assign trainer: %v", err))
 	}
+
+	log.Infof("Successfully assigned student %s to trainer %s", studentID, trainerID)
 
 	return jsonResponse(200, map[string]interface{}{
 		"message":   "Trainer assigned successfully",
@@ -552,7 +590,7 @@ func (a *App) listStudents(ctx context.Context, request events.APIGatewayV2HTTPR
 	if len(pathParts) < 5 {
 		return errorResponse(400, "Invalid trainer ID")
 	}
-	trainerID := pathParts[2]
+	trainerID := pathParts[3]
 
 	students, _, err := a.userService.ListStudentsByTrainer(ctx, trainerID, 50, "")
 	if err != nil {
@@ -560,8 +598,7 @@ func (a *App) listStudents(ctx context.Context, request events.APIGatewayV2HTTPR
 	}
 
 	return jsonResponse(200, map[string]interface{}{
-		"message":  "Students retrieved successfully",
-		"students": students,
+		"data": students,
 	})
 }
 
@@ -695,6 +732,171 @@ func (a *App) logout(ctx context.Context, request events.APIGatewayV2HTTPRequest
 	}
 
 	return jsonResponse(200, map[string]string{"message": "Logged out successfully"})
+}
+
+// Routine handlers
+func (a *App) listRoutinesByTrainer(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
+	if len(pathParts) < 5 {
+		return errorResponse(400, "Invalid trainer ID")
+	}
+	trainerID := pathParts[3]
+
+	routines, _, err := a.routineService.ListRoutinesByTrainer(ctx, trainerID, 50, "")
+	if err != nil {
+		return errorResponse(500, fmt.Sprintf("Failed to list routines: %v", err))
+	}
+
+	return jsonResponse(200, map[string]interface{}{
+		"data": routines,
+	})
+}
+
+func (a *App) getRoutine(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
+	if len(pathParts) < 4 {
+		return errorResponse(400, "Invalid routine ID")
+	}
+	routineID := pathParts[3]
+
+	routine, err := a.routineService.GetRoutine(ctx, routineID)
+	if err != nil {
+		log.Error("failed to get routine", err)
+		return errorResponse(404, "Routine not found")
+	}
+
+	workoutDays, err := a.routineService.GetWorkoutDays(ctx, routineID)
+	if err != nil {
+		log.Error("failed to get workout days", err)
+		return errorResponse(500, "Failed to get workout days")
+	}
+
+	return jsonResponse(200, map[string]interface{}{
+		"data":        routine,
+		"workoutDays": workoutDays,
+	})
+}
+
+func (a *App) createRoutine(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
+	if len(pathParts) < 5 {
+		return errorResponse(400, "Invalid trainer ID")
+	}
+	trainerID := pathParts[3]
+
+	var req struct {
+		Name        string `json:"name"`
+		WeekCount   int    `json:"weekCount"`
+		Description string `json:"description"`
+	}
+	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
+		log.Error("failed to unmarshal request body", err)
+		return errorResponse(400, "Invalid request body")
+	}
+
+	routine, err := a.routineService.CreateRoutine(ctx, trainerID, &routineDomain.CreateRoutineRequest{
+		Name:        req.Name,
+		WeekCount:   req.WeekCount,
+		Description: req.Description,
+	})
+	if err != nil {
+		log.Error("failed to create routine", err)
+		return errorResponse(500, fmt.Sprintf("Failed to create routine: %v", err))
+	}
+
+	return jsonResponse(201, map[string]interface{}{
+		"data": routine,
+	})
+}
+
+func (a *App) deleteRoutine(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
+	if len(pathParts) < 6 {
+		return errorResponse(400, "Invalid routine ID")
+	}
+	trainerID := pathParts[3]
+	routineID := pathParts[5]
+
+	if err := a.routineService.DeleteRoutine(ctx, trainerID, routineID); err != nil {
+		log.Error("failed to delete routine", err)
+		return errorResponse(500, fmt.Sprintf("Failed to delete routine: %v", err))
+	}
+
+	return jsonResponse(200, map[string]interface{}{
+		"message": "Routine deleted successfully",
+	})
+}
+
+func (a *App) updateRoutine(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
+	if len(pathParts) < 6 {
+		return errorResponse(400, "Invalid routine ID")
+	}
+	trainerID := pathParts[3]
+	routineID := pathParts[5]
+
+	var req struct {
+		Name        string `json:"name"`
+		Description string `json:"description"`
+		Status      string `json:"status"`
+	}
+	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
+		log.Error("failed to unmarshal request body", err)
+		return errorResponse(400, "Invalid request body")
+	}
+
+	routine, err := a.routineService.UpdateRoutine(ctx, trainerID, routineID, &routineDomain.UpdateRoutineRequest{
+		Name:        req.Name,
+		Description: req.Description,
+		Status:      routineDomain.RoutineStatus(req.Status),
+	})
+	if err != nil {
+		log.Error("failed to update routine", err)
+		return errorResponse(500, fmt.Sprintf("Failed to update routine: %v", err))
+	}
+
+	return jsonResponse(200, map[string]interface{}{
+		"data": routine,
+	})
+}
+
+func (a *App) createWorkoutDay(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
+	if len(pathParts) < 7 {
+		return errorResponse(400, "Invalid routine ID")
+	}
+	trainerID := pathParts[3]
+	routineID := pathParts[5]
+
+	var req struct {
+		WeekNumber int                         `json:"weekNumber"`
+		DayNumber  int                         `json:"dayNumber"`
+		DayName    string                      `json:"dayName"`
+		IsRestDay  bool                        `json:"isRestDay"`
+		Exercises  []routineDomain.ExerciseSet `json:"exercises"`
+	}
+	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
+		log.Error("failed to unmarshal request body", err)
+		return errorResponse(400, "Invalid request body")
+	}
+
+	workoutDay := &routineDomain.WorkoutDay{
+		RoutineID:  routineID,
+		WeekNumber: req.WeekNumber,
+		DayNumber:  req.DayNumber,
+		DayName:    req.DayName,
+		IsRestDay:  req.IsRestDay,
+		Exercises:  req.Exercises,
+	}
+
+	if err := a.routineService.CreateWorkoutDay(ctx, trainerID, routineID, workoutDay); err != nil {
+		log.Error("failed to create workout day", err)
+		return errorResponse(500, fmt.Sprintf("Failed to create workout day: %v", err))
+	}
+
+	return jsonResponse(201, map[string]interface{}{
+		"data": workoutDay,
+	})
 }
 
 // Helper functions
