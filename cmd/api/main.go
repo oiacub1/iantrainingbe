@@ -244,14 +244,14 @@ func router(ctx context.Context, request events.APIGatewayV2HTTPRequest) (events
 }
 
 func matchDynamicRoute(method, path string) func(context.Context, events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
-	// Handle dynamic routes
+	// Handle dynamic routes - more specific routes first
 	if method == "GET" && strings.HasPrefix(path, "/api/v1/exercises/") {
 		return app.getExercise
 	}
 	if method == "GET" && strings.HasPrefix(path, "/api/v1/users/") {
 		return app.getUser
 	}
-	if method == "GET" && strings.HasPrefix(path, "/api/v1/routines/") {
+	if method == "GET" && strings.HasPrefix(path, "/api/v1/routines/") && !strings.Contains(path, "/trainers/") {
 		return app.getRoutine
 	}
 	if method == "POST" && strings.Contains(path, "/trainers/") && strings.HasSuffix(path, "/students") {
