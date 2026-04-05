@@ -827,27 +827,30 @@ func (a *App) listRoutinesByTrainer(ctx context.Context, request events.APIGatew
 }
 
 func (a *App) getRoutine(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	log.Infof("getRoutine called with path: %s", request.RawPath)
+
 	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
+	log.Infof("Path parts: %+v", pathParts)
+
 	if len(pathParts) < 4 {
+		log.Errorf("Invalid path parts length: %d, expected at least 4", len(pathParts))
 		return errorResponse(400, "Invalid routine ID")
 	}
+
 	routineID := pathParts[3]
+	log.Infof("Extracted routineID: %s", routineID)
 
 	routine, err := a.routineService.GetRoutine(ctx, routineID)
 	if err != nil {
-		log.Error("failed to get routine", err)
+		log.Errorf("Failed to get routine %s: %v", routineID, err)
 		return errorResponse(404, "Routine not found")
 	}
 
-	workoutDays, err := a.routineService.GetWorkoutDays(ctx, routineID)
-	if err != nil {
-		log.Error("failed to get workout days", err)
-		return errorResponse(500, "Failed to get workout days")
-	}
+	log.Infof("Successfully retrieved routine %s with %d workout days", routineID, len(routine.WorkoutDays))
 
 	return jsonResponse(200, map[string]interface{}{
 		"data":        routine,
-		"workoutDays": workoutDays,
+		"workoutDays": routine.WorkoutDays, // Use embedded workoutDays
 	})
 }
 
