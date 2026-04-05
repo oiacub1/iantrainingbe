@@ -832,12 +832,17 @@ func (a *App) getRoutine(ctx context.Context, request events.APIGatewayV2HTTPReq
 	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
 	log.Infof("Path parts: %+v", pathParts)
 
-	if len(pathParts) < 4 {
-		log.Errorf("Invalid path parts length: %d, expected at least 4", len(pathParts))
+	// Handle both local (/api/v1/...) and production (/prod/api/v1/...) paths
+	var routineID string
+	if pathParts[0] == "prod" && len(pathParts) >= 5 {
+		routineID = pathParts[4] // /prod/api/v1/routines/ID
+	} else if len(pathParts) >= 4 {
+		routineID = pathParts[3] // /api/v1/routines/ID
+	} else {
+		log.Errorf("Invalid path parts length: %d, expected at least 4 (local) or 5 (prod)", len(pathParts))
 		return errorResponse(400, "Invalid routine ID")
 	}
 
-	routineID := pathParts[3]
 	log.Infof("Extracted routineID: %s", routineID)
 
 	routine, err := a.routineService.GetRoutine(ctx, routineID)
