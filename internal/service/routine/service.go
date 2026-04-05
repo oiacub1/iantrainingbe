@@ -3,6 +3,7 @@ package routine
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"iantraining/internal/domain/routine"
 	"iantraining/internal/domain/user"
@@ -28,9 +29,12 @@ func (s *Service) CreateRoutine(ctx context.Context, trainerID string, req *rout
 	routineEntity := &routine.Routine{
 		Name:        req.Name,
 		TrainerID:   trainerID,
-		Description: req.Description,
 		Status:      routine.RoutineStatusDraft,
 		WeekCount:   req.WeekCount,
+		Description: req.Description,
+		WorkoutDays: []routine.WorkoutDay{}, // Initialize empty workout days
+		CreatedAt:   time.Now(),
+		UpdatedAt:   time.Now(),
 	}
 
 	if err := s.routineRepo.CreateRoutine(ctx, routineEntity); err != nil {
@@ -56,19 +60,17 @@ func (s *Service) UpdateRoutine(ctx context.Context, trainerID, routineID string
 	}
 
 	if existingRoutine.TrainerID != trainerID {
-		return nil, routine.ErrRoutineNotFound
+		return nil, fmt.Errorf("trainer does not own this routine")
 	}
 
-	if req.Name != "" {
-		existingRoutine.Name = req.Name
-	}
+	existingRoutine.Name = req.Name
+	existingRoutine.Description = req.Description
+	existingRoutine.Status = req.Status
+	existingRoutine.UpdatedAt = time.Now()
 
-	if req.Description != "" {
-		existingRoutine.Description = req.Description
-	}
-
-	if req.Status != "" && req.Status.IsValid() {
-		existingRoutine.Status = req.Status
+	// Update workout days if provided
+	if req.WorkoutDays != nil {
+		existingRoutine.WorkoutDays = req.WorkoutDays
 	}
 
 	if err := s.routineRepo.UpdateRoutine(ctx, existingRoutine); err != nil {
@@ -138,19 +140,27 @@ func (s *Service) CreateWorkoutDay(ctx context.Context, trainerID, routineID str
 		return err
 	}
 
-	workoutDay.RoutineID = routineID
+	// Add workout day to routine
+	routineData.WorkoutDays = append(routineData.WorkoutDays, *workoutDay)
+	routineData.UpdatedAt = time.Now()
 
-	if err := s.routineRepo.CreateWorkoutDay(ctx, workoutDay); err != nil {
-		return fmt.Errorf("failed to create workout day: %w", err)
+	if err := s.routineRepo.UpdateRoutine(ctx, routineData); err != nil {
+		return fmt.Errorf("failed to update routine with workout day: %w", err)
 	}
 
 	return nil
 }
 
 func (s *Service) GetWorkoutDays(ctx context.Context, routineID string) ([]*routine.WorkoutDay, error) {
-	workoutDays, err := s.routineRepo.GetWorkoutDays(ctx, routineID)
+	routineData, err := s.routineRepo.GetRoutine(ctx, routineID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get workout days: %w", err)
+		return nil, fmt.Errorf("failed to get routine: %w", err)
+	}
+
+	// Convert slice of WorkoutDay to slice of pointers
+	workoutDays := make([]*routine.WorkoutDay, len(routineData.WorkoutDays))
+	for i := range routineData.WorkoutDays {
+		workoutDays[i] = &routineData.WorkoutDays[i]
 	}
 
 	return workoutDays, nil
@@ -163,17 +173,46 @@ func (s *Service) UpdateWorkoutDay(ctx context.Context, trainerID, routineID str
 	}
 
 	if routineData.TrainerID != trainerID {
-		return routine.ErrRoutineNotFound
+		return fmt.Errorf("trainer does not own this routine")
 	}
 
 	if err := s.validateWorkoutDay(workoutDay); err != nil {
 		return err
 	}
 
-	workoutDay.RoutineID = routineID
+	// Update workout day in routine
+	for i, existingWorkoutDay := range routineData.WorkoutDays {
+		if existingWorkoutDay.WeekNumber == workoutDay.WeekNumber && existingWorkoutDay.DayNumber == workoutDay.DayNumber {
+			routineData.WorkoutDays[i] = *workoutDay
+			break
+		}
+	}
 
-	if err := s.routineRepo.UpdateWorkoutDay(ctx, workoutDay); err != nil {
-		return fmt.Errorf("failed to update workout day: %w", err)
+	routineData.UpdatedAt = time.Now()
+
+	if err := s.routineRepo.UpdateRoutine(ctx, routineData); err != nil {
+		return fmt.Errorf("failed to update routine with workout day: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) DeleteWorkoutDays(ctx context.Context, trainerID, routineID string) error {
+	routineData, err := s.routineRepo.GetRoutine(ctx, routineID)
+	if err != nil {
+		return fmt.Errorf("failed to get routine: %w", err)
+	}
+
+	if routineData.TrainerID != trainerID {
+		return fmt.Errorf("trainer does not own this routine")
+	}
+
+	// Clear workout days array
+	routineData.WorkoutDays = []routine.WorkoutDay{}
+	routineData.UpdatedAt = time.Now()
+
+	if err := s.routineRepo.UpdateRoutine(ctx, routineData); err != nil {
+		return fmt.Errorf("failed to update routine: %w", err)
 	}
 
 	return nil

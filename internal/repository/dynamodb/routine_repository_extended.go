@@ -14,65 +14,30 @@ import (
 	"iantraining/internal/domain/routine"
 )
 
+// Workout days are now embedded in Routine, this method is no longer needed
 func (r *RoutineRepository) CreateWorkoutDay(ctx context.Context, workoutDay *routine.WorkoutDay) error {
-	item, err := attributevalue.MarshalMap(workoutDayToDynamoItem(workoutDay))
-	if err != nil {
-		return fmt.Errorf("failed to marshal workout day: %w", err)
-	}
-
-	_, err = r.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(r.tableName),
-		Item:      item,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to create workout day: %w", err)
-	}
-
-	return nil
+	return fmt.Errorf("CreateWorkoutDay is deprecated - workout days are now embedded in Routine")
 }
 
 func (r *RoutineRepository) GetWorkoutDays(ctx context.Context, routineID string) ([]*routine.WorkoutDay, error) {
-	input := &dynamodb.QueryInput{
-		TableName:              aws.String(r.tableName),
-		KeyConditionExpression: aws.String("PK = :routineId AND begins_with(SK, :workoutDayPrefix)"),
-		ExpressionAttributeValues: map[string]types.AttributeValue{
-			":routineId":        &types.AttributeValueMemberS{Value: r.keyBuilder.RoutinePK(routineID)},
-			":workoutDayPrefix": &types.AttributeValueMemberS{Value: "WORKOUTDAY#"},
-		},
-	}
-
-	resp, err := r.client.Query(ctx, input)
+	// Get the routine and return embedded workout days
+	routineData, err := r.GetRoutine(ctx, routineID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query workout days: %w", err)
+		return nil, fmt.Errorf("failed to get routine: %w", err)
 	}
 
-	workoutDays := make([]*routine.WorkoutDay, 0, len(resp.Items))
-	for _, item := range resp.Items {
-		var dynamoItem DynamoWorkoutDay
-		if err := attributevalue.UnmarshalMap(item, &dynamoItem); err != nil {
-			continue
-		}
-		workoutDays = append(workoutDays, dynamoItemToWorkoutDay(&dynamoItem))
+	// Convert slice of WorkoutDay to slice of pointers
+	workoutDays := make([]*routine.WorkoutDay, len(routineData.WorkoutDays))
+	for i := range routineData.WorkoutDays {
+		workoutDays[i] = &routineData.WorkoutDays[i]
 	}
 
 	return workoutDays, nil
 }
 
+// Workout days are now embedded in Routine, this method is no longer needed
 func (r *RoutineRepository) UpdateWorkoutDay(ctx context.Context, workoutDay *routine.WorkoutDay) error {
-	item, err := attributevalue.MarshalMap(workoutDayToDynamoItem(workoutDay))
-	if err != nil {
-		return fmt.Errorf("failed to marshal workout day: %w", err)
-	}
-
-	_, err = r.client.PutItem(ctx, &dynamodb.PutItemInput{
-		TableName: aws.String(r.tableName),
-		Item:      item,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to update workout day: %w", err)
-	}
-
-	return nil
+	return fmt.Errorf("UpdateWorkoutDay is deprecated - workout days are now embedded in Routine")
 }
 
 func (r *RoutineRepository) DeleteWorkoutDays(ctx context.Context, routineID string) error {

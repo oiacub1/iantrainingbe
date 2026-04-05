@@ -40,7 +40,7 @@ func (r *RoutineRepository) CreateRoutine(ctx context.Context, routine *routine.
 	}
 	routine.UpdatedAt = now
 
-	item, err := attributevalue.MarshalMap(routineToDynamoItem(routine))
+	item, err := attributevalue.MarshalMap(routineToDynamoItem(routine, r.keyBuilder))
 	if err != nil {
 		return fmt.Errorf("failed to marshal routine: %w", err)
 	}
@@ -83,7 +83,7 @@ func (r *RoutineRepository) GetRoutine(ctx context.Context, id string) (*routine
 func (r *RoutineRepository) UpdateRoutine(ctx context.Context, routine *routine.Routine) error {
 	routine.UpdatedAt = time.Now()
 
-	item, err := attributevalue.MarshalMap(routineToDynamoItem(routine))
+	item, err := attributevalue.MarshalMap(routineToDynamoItem(routine, r.keyBuilder))
 	if err != nil {
 		return fmt.Errorf("failed to marshal routine: %w", err)
 	}

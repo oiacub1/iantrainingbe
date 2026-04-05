@@ -1,40 +1,37 @@
 package dynamodb
 
 import (
-	"fmt"
 	"time"
 
 	"iantraining/internal/domain/routine"
 )
 
 type DynamoRoutine struct {
-	PK          string    `dynamodbav:"PK"`
-	SK          string    `dynamodbav:"SK"`
-	ID          string    `dynamodbav:"id"`
-	Name        string    `dynamodbav:"name"`
-	TrainerID   string    `dynamodbav:"trainerId"`
-	Description string    `dynamodbav:"description"`
-	Status      string    `dynamodbav:"status"`
-	WeekCount   int       `dynamodbav:"weekCount"`
-	CreatedAt   time.Time `dynamodbav:"createdAt"`
-	UpdatedAt   time.Time `dynamodbav:"updatedAt"`
-	EntityType  string    `dynamodbav:"entityType"`
-	GSI1PK      string    `dynamodbav:"GSI1PK"`
-	GSI1SK      string    `dynamodbav:"GSI1SK"`
-	GSI2PK      string    `dynamodbav:"GSI2PK"`
-	GSI2SK      string    `dynamodbav:"GSI2SK"`
+	PK          string             `dynamodbav:"PK"`
+	SK          string             `dynamodbav:"SK"`
+	ID          string             `dynamodbav:"id"`
+	Name        string             `dynamodbav:"name"`
+	TrainerID   string             `dynamodbav:"trainerId"`
+	Description string             `dynamodbav:"description"`
+	Status      string             `dynamodbav:"status"`
+	WeekCount   int                `dynamodbav:"weekCount"`
+	WorkoutDays []DynamoWorkoutDay `dynamodbav:"workoutDays"`
+	CreatedAt   time.Time          `dynamodbav:"createdAt"`
+	UpdatedAt   time.Time          `dynamodbav:"updatedAt"`
+	EntityType  string             `dynamodbav:"entityType"`
+	GSI1PK      string             `dynamodbav:"GSI1PK"`
+	GSI1SK      string             `dynamodbav:"GSI1SK"`
+	GSI2PK      string             `dynamodbav:"GSI2PK"`
+	GSI2SK      string             `dynamodbav:"GSI2SK"`
 }
 
+// DynamoWorkoutDay for embedded workout days (no PK/SK since embedded in Routine)
 type DynamoWorkoutDay struct {
-	PK         string              `dynamodbav:"PK"`
-	SK         string              `dynamodbav:"SK"`
-	RoutineID  string              `dynamodbav:"routineId"`
 	WeekNumber int                 `dynamodbav:"weekNumber"`
 	DayNumber  int                 `dynamodbav:"dayNumber"`
 	DayName    string              `dynamodbav:"dayName"`
 	IsRestDay  bool                `dynamodbav:"isRestDay"`
 	Exercises  []DynamoExerciseSet `dynamodbav:"exercises"`
-	EntityType string              `dynamodbav:"entityType"`
 }
 
 type DynamoExerciseSet struct {
@@ -98,27 +95,78 @@ type DynamoDailySummary struct {
 	GSI1SK               string    `dynamodbav:"GSI1SK"`
 }
 
-func routineToDynamoItem(r *routine.Routine) *DynamoRoutine {
+func routineToDynamoItem(r *routine.Routine, kb *KeyBuilder) *DynamoRoutine {
+	// Convert workout days to Dynamo format
+	workoutDays := make([]DynamoWorkoutDay, len(r.WorkoutDays))
+	for i, wd := range r.WorkoutDays {
+		exercises := make([]DynamoExerciseSet, len(wd.Exercises))
+		for j, ex := range wd.Exercises {
+			exercises[j] = DynamoExerciseSet{
+				ExerciseID:  ex.ExerciseID,
+				Order:       ex.Order,
+				Sets:        ex.Sets,
+				Reps:        ex.Reps,
+				RestSeconds: ex.RestSeconds,
+				Notes:       ex.Notes,
+				Tempo:       ex.Tempo,
+				RPE:         ex.RPE,
+			}
+		}
+		workoutDays[i] = DynamoWorkoutDay{
+			WeekNumber: wd.WeekNumber,
+			DayNumber:  wd.DayNumber,
+			DayName:    wd.DayName,
+			IsRestDay:  wd.IsRestDay,
+			Exercises:  exercises,
+		}
+	}
+
 	return &DynamoRoutine{
-		PK:          "ROUTINE#" + r.ID,
-		SK:          "ROUTINE#" + r.ID,
+		PK:          kb.RoutinePK(r.ID),
+		SK:          kb.RoutinePK(r.ID),
 		ID:          r.ID,
 		Name:        r.Name,
 		TrainerID:   r.TrainerID,
 		Description: r.Description,
 		Status:      string(r.Status),
 		WeekCount:   r.WeekCount,
+		WorkoutDays: workoutDays,
 		CreatedAt:   r.CreatedAt,
 		UpdatedAt:   r.UpdatedAt,
 		EntityType:  EntityTypeRoutine,
-		GSI1PK:      "TRAINER#" + r.TrainerID,
-		GSI1SK:      "ROUTINE#" + r.CreatedAt.Format(time.RFC3339),
-		GSI2PK:      "TRAINER#" + r.TrainerID,
-		GSI2SK:      "ROUTINE#" + r.CreatedAt.Format(time.RFC3339),
+		GSI1PK:      kb.TrainerGSI2PK(r.TrainerID), // Using GSI2 for trainer queries
+		GSI1SK:      kb.RoutineGSI1SK(r.CreatedAt.Format("2006-01-02")),
+		GSI2PK:      kb.TrainerGSI2PK(r.TrainerID),
+		GSI2SK:      kb.RoutineGSI2SK(r.CreatedAt.Format("2006-01-02")),
 	}
 }
 
 func dynamoItemToRoutine(d *DynamoRoutine) *routine.Routine {
+	// Convert embedded workout days from Dynamo format
+	workoutDays := make([]routine.WorkoutDay, len(d.WorkoutDays))
+	for i, wd := range d.WorkoutDays {
+		exercises := make([]routine.ExerciseSet, len(wd.Exercises))
+		for j, ex := range wd.Exercises {
+			exercises[j] = routine.ExerciseSet{
+				ExerciseID:  ex.ExerciseID,
+				Order:       ex.Order,
+				Sets:        ex.Sets,
+				Reps:        ex.Reps,
+				RestSeconds: ex.RestSeconds,
+				Notes:       ex.Notes,
+				Tempo:       ex.Tempo,
+				RPE:         ex.RPE,
+			}
+		}
+		workoutDays[i] = routine.WorkoutDay{
+			WeekNumber: wd.WeekNumber,
+			DayNumber:  wd.DayNumber,
+			DayName:    wd.DayName,
+			IsRestDay:  wd.IsRestDay,
+			Exercises:  exercises,
+		}
+	}
+
 	return &routine.Routine{
 		ID:          d.ID,
 		Name:        d.Name,
@@ -126,63 +174,13 @@ func dynamoItemToRoutine(d *DynamoRoutine) *routine.Routine {
 		Description: d.Description,
 		Status:      routine.RoutineStatus(d.Status),
 		WeekCount:   d.WeekCount,
+		WorkoutDays: workoutDays,
 		CreatedAt:   d.CreatedAt,
 		UpdatedAt:   d.UpdatedAt,
 	}
 }
 
-func workoutDayToDynamoItem(w *routine.WorkoutDay) *DynamoWorkoutDay {
-	exercises := make([]DynamoExerciseSet, len(w.Exercises))
-	for i, ex := range w.Exercises {
-		exercises[i] = DynamoExerciseSet{
-			ExerciseID:  ex.ExerciseID,
-			Order:       ex.Order,
-			Sets:        ex.Sets,
-			Reps:        ex.Reps,
-			RestSeconds: ex.RestSeconds,
-			Notes:       ex.Notes,
-			Tempo:       ex.Tempo,
-			RPE:         ex.RPE,
-		}
-	}
-
-	return &DynamoWorkoutDay{
-		PK:         "ROUTINE#" + w.RoutineID,
-		SK:         fmt.Sprintf("WORKOUTDAY#W%dD%d", w.WeekNumber, w.DayNumber),
-		RoutineID:  w.RoutineID,
-		WeekNumber: w.WeekNumber,
-		DayNumber:  w.DayNumber,
-		DayName:    w.DayName,
-		IsRestDay:  w.IsRestDay,
-		Exercises:  exercises,
-		EntityType: EntityTypeWorkoutDay,
-	}
-}
-
-func dynamoItemToWorkoutDay(d *DynamoWorkoutDay) *routine.WorkoutDay {
-	exercises := make([]routine.ExerciseSet, len(d.Exercises))
-	for i, ex := range d.Exercises {
-		exercises[i] = routine.ExerciseSet{
-			ExerciseID:  ex.ExerciseID,
-			Order:       ex.Order,
-			Sets:        ex.Sets,
-			Reps:        ex.Reps,
-			RestSeconds: ex.RestSeconds,
-			Notes:       ex.Notes,
-			Tempo:       ex.Tempo,
-			RPE:         ex.RPE,
-		}
-	}
-
-	return &routine.WorkoutDay{
-		RoutineID:  d.RoutineID,
-		WeekNumber: d.WeekNumber,
-		DayNumber:  d.DayNumber,
-		DayName:    d.DayName,
-		IsRestDay:  d.IsRestDay,
-		Exercises:  exercises,
-	}
-}
+// Workout days are now embedded in Routine, no longer need separate DynamoDB items
 
 func workoutLogToDynamoItem(w *routine.WorkoutLog) *DynamoWorkoutLog {
 	sets := make([]DynamoWorkoutSet, len(w.Sets))

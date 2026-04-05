@@ -18,12 +18,12 @@ type Routine struct {
 	Status      RoutineStatus `json:"status"`
 	WeekCount   int           `json:"weekCount"`
 	Description string        `json:"description"`
+	WorkoutDays []WorkoutDay  `json:"workoutDays"`
 	CreatedAt   time.Time     `json:"createdAt"`
 	UpdatedAt   time.Time     `json:"updatedAt"`
 }
 
 type WorkoutDay struct {
-	RoutineID  string        `json:"routineId"`
 	WeekNumber int           `json:"weekNumber"`
 	DayNumber  int           `json:"dayNumber"`
 	DayName    string        `json:"dayName"`
@@ -52,6 +52,7 @@ type UpdateRoutineRequest struct {
 	Name        string        `json:"name"`
 	Description string        `json:"description"`
 	Status      RoutineStatus `json:"status"`
+	WorkoutDays []WorkoutDay  `json:"workoutDays,omitempty"`
 }
 
 type CreateWorkoutDayRequest struct {

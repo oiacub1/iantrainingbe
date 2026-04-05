@@ -278,6 +278,12 @@ func matchDynamicRoute(method, path string) func(context.Context, events.APIGate
 	if method == "POST" && strings.Contains(path, "/trainers/") && strings.Contains(path, "/routines/") && strings.HasSuffix(path, "/workout-days") {
 		return app.createWorkoutDay
 	}
+	if method == "PUT" && strings.Contains(path, "/trainers/") && strings.Contains(path, "/routines/") && strings.Contains(path, "/workout-days/") {
+		return app.updateWorkoutDay
+	}
+	if method == "DELETE" && strings.Contains(path, "/trainers/") && strings.Contains(path, "/routines/") && strings.HasSuffix(path, "/workout-days") {
+		return app.deleteWorkoutDays
+	}
 
 	return nil
 }
@@ -914,9 +920,10 @@ func (a *App) updateRoutine(ctx context.Context, request events.APIGatewayV2HTTP
 	}
 
 	var req struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
-		Status      string `json:"status"`
+		Name        string                     `json:"name"`
+		Description string                     `json:"description"`
+		Status      string                     `json:"status"`
+		WorkoutDays []routineDomain.WorkoutDay `json:"workoutDays"`
 	}
 	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
 		log.Error("failed to unmarshal request body", err)
@@ -927,6 +934,7 @@ func (a *App) updateRoutine(ctx context.Context, request events.APIGatewayV2HTTP
 		Name:        req.Name,
 		Description: req.Description,
 		Status:      routineDomain.RoutineStatus(req.Status),
+		WorkoutDays: req.WorkoutDays,
 	})
 	if err != nil {
 		log.Error("failed to update routine", err)
@@ -938,20 +946,20 @@ func (a *App) updateRoutine(ctx context.Context, request events.APIGatewayV2HTTP
 	})
 }
 
-func (a *App) createWorkoutDay(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+func (a *App) updateWorkoutDay(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
 	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
-	if len(pathParts) < 7 {
-		return errorResponse(400, "Invalid routine ID")
+	if len(pathParts) < 8 {
+		return errorResponse(400, "Invalid workout day ID")
 	}
 
 	// Handle both local (/api/v1/...) and production (/prod/api/v1/...) paths
 	var trainerID string
 	var routineID string
-	if pathParts[0] == "prod" && len(pathParts) >= 8 {
-		trainerID = pathParts[4] // /prod/api/v1/trainers/ID/routines/routineID/workout-days
+	if pathParts[0] == "prod" && len(pathParts) >= 9 {
+		trainerID = pathParts[4] // /prod/api/v1/trainers/ID/routines/routineID/workout-days/workoutDayID
 		routineID = pathParts[6]
 	} else {
-		trainerID = pathParts[3] // /api/v1/trainers/ID/routines/routineID/workout-days
+		trainerID = pathParts[3] // /api/v1/trainers/ID/routines/routineID/workout-days/workoutDayID
 		routineID = pathParts[5]
 	}
 
@@ -968,7 +976,99 @@ func (a *App) createWorkoutDay(ctx context.Context, request events.APIGatewayV2H
 	}
 
 	workoutDay := &routineDomain.WorkoutDay{
-		RoutineID:  routineID,
+		WeekNumber: req.WeekNumber,
+		DayNumber:  req.DayNumber,
+		DayName:    req.DayName,
+		IsRestDay:  req.IsRestDay,
+		Exercises:  req.Exercises,
+	}
+
+	if err := a.routineService.UpdateWorkoutDay(ctx, trainerID, routineID, workoutDay); err != nil {
+		log.Error("failed to update workout day", err)
+		return errorResponse(500, fmt.Sprintf("Failed to update workout day: %v", err))
+	}
+
+	return jsonResponse(200, map[string]interface{}{
+		"data": workoutDay,
+	})
+}
+
+func (a *App) deleteWorkoutDays(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
+	if len(pathParts) < 7 {
+		return errorResponse(400, "Invalid routine ID")
+	}
+
+	// Handle both local (/api/v1/...) and production (/prod/api/v1/...) paths
+	var trainerID string
+	var routineID string
+	if pathParts[0] == "prod" && len(pathParts) >= 8 {
+		trainerID = pathParts[4] // /prod/api/v1/trainers/ID/routines/routineID/workout-days
+		routineID = pathParts[6]
+	} else {
+		trainerID = pathParts[3] // /api/v1/trainers/ID/routines/routineID/workout-days
+		routineID = pathParts[5]
+	}
+
+	if err := a.routineService.DeleteWorkoutDays(ctx, trainerID, routineID); err != nil {
+		log.Error("failed to delete workout days", err)
+		return errorResponse(500, fmt.Sprintf("Failed to delete workout days: %v", err))
+	}
+
+	return jsonResponse(200, map[string]interface{}{
+		"message": "Workout days deleted successfully",
+	})
+}
+
+func (a *App) createWorkoutDay(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	log.Infof("createWorkoutDay called with path: %s", request.RawPath)
+	log.Infof("Request body: %s", request.Body)
+
+	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
+	log.Infof("Path parts: %+v", pathParts)
+
+	if len(pathParts) < 7 {
+		log.Errorf("Invalid path parts length: %d, expected at least 7", len(pathParts))
+		return errorResponse(400, "Invalid routine ID")
+	}
+
+	// Handle both local (/api/v1/...) and production (/prod/api/v1/...) paths
+	var trainerID string
+	var routineID string
+	if pathParts[0] == "prod" && len(pathParts) >= 8 {
+		trainerID = pathParts[4] // /prod/api/v1/trainers/ID/routines/routineID/workout-days
+		routineID = pathParts[6]
+	} else {
+		trainerID = pathParts[3] // /api/v1/trainers/ID/routines/routineID/workout-days
+		routineID = pathParts[5]
+	}
+
+	log.Infof("Extracted trainerID: %s, routineID: %s", trainerID, routineID)
+
+	var req struct {
+		WeekNumber int                         `json:"weekNumber"`
+		DayNumber  int                         `json:"dayNumber"`
+		DayName    string                      `json:"dayName"`
+		IsRestDay  bool                        `json:"isRestDay"`
+		Exercises  []routineDomain.ExerciseSet `json:"exercises"`
+	}
+	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
+		log.Error("failed to unmarshal request body", err)
+		return errorResponse(400, "Invalid request body")
+	}
+
+	log.Infof("Creating workout day for routine %s: week %d, day %d", routineID, req.WeekNumber, req.DayNumber)
+
+	// First, verify the routine exists
+	log.Infof("Verifying routine %s exists...", routineID)
+	routine, routineErr := a.routineService.GetRoutine(ctx, routineID)
+	if routineErr != nil {
+		log.Errorf("Routine verification failed for ID %s: %v", routineID, routineErr)
+		return errorResponse(500, fmt.Sprintf("Failed to verify routine: %v", routineErr))
+	}
+	log.Infof("Routine verified: %+v", routine)
+
+	workoutDay := &routineDomain.WorkoutDay{
 		WeekNumber: req.WeekNumber,
 		DayNumber:  req.DayNumber,
 		DayName:    req.DayName,
@@ -977,9 +1077,11 @@ func (a *App) createWorkoutDay(ctx context.Context, request events.APIGatewayV2H
 	}
 
 	if err := a.routineService.CreateWorkoutDay(ctx, trainerID, routineID, workoutDay); err != nil {
-		log.Error("failed to create workout day", err)
+		log.Errorf("Failed to create workout day for routine %s: %v", routineID, err)
 		return errorResponse(500, fmt.Sprintf("Failed to create workout day: %v", err))
 	}
+
+	log.Infof("Successfully created workout day for routine %s", routineID)
 
 	return jsonResponse(201, map[string]interface{}{
 		"data": workoutDay,
