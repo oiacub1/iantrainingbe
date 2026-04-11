@@ -274,6 +274,10 @@ func matchDynamicRoute(method, path string) func(context.Context, events.APIGate
 		log.Infof("Routing to listRoutinesByTrainer")
 		return app.listRoutinesByTrainer
 	}
+	if method == "POST" && strings.Contains(path, "/trainers/") && strings.HasSuffix(path, "/routines/assign") {
+		log.Infof("Routing to assignRoutineToStudent")
+		return app.assignRoutineToStudent
+	}
 	if method == "POST" && strings.Contains(path, "/trainers/") && strings.HasSuffix(path, "/routines") {
 		log.Infof("Routing to createRoutine")
 		return app.createRoutine
@@ -508,8 +512,7 @@ func (a *App) getUser(ctx context.Context, request events.APIGatewayV2HTTPReques
 			return errorResponse(404, "Student not found")
 		}
 		return jsonResponse(200, map[string]interface{}{
-			"message": "Student retrieved successfully",
-			"student": student,
+			"data": student,
 		})
 	} else if userType == "trainer" {
 		trainer, err := a.userService.GetTrainer(ctx, id)
@@ -517,8 +520,7 @@ func (a *App) getUser(ctx context.Context, request events.APIGatewayV2HTTPReques
 			return errorResponse(404, "Trainer not found")
 		}
 		return jsonResponse(200, map[string]interface{}{
-			"message": "Trainer retrieved successfully",
-			"trainer": trainer,
+			"data": trainer,
 		})
 	}
 
@@ -978,6 +980,81 @@ func (a *App) updateRoutine(ctx context.Context, request events.APIGatewayV2HTTP
 
 	return jsonResponse(200, map[string]interface{}{
 		"data": routine,
+	})
+}
+
+func (a *App) assignRoutineToStudent(ctx context.Context, request events.APIGatewayV2HTTPRequest) events.APIGatewayV2HTTPResponse {
+	pathParts := strings.Split(strings.Trim(request.RawPath, "/"), "/")
+
+	// Handle both local (/api/v1/...) and production (/prod/api/v1/...) paths
+	var trainerID string
+	if pathParts[0] == "prod" && len(pathParts) >= 5 {
+		trainerID = pathParts[4] // /prod/api/v1/trainers/ID/routines/assign
+	} else if len(pathParts) >= 4 {
+		trainerID = pathParts[3] // /api/v1/trainers/ID/routines/assign
+	} else {
+		return errorResponse(400, "Invalid trainer ID")
+	}
+
+	var req struct {
+		RoutineID string `json:"routineId"`
+		StudentID string `json:"studentId"`
+	}
+	if err := json.Unmarshal([]byte(request.Body), &req); err != nil {
+		log.Error("failed to unmarshal request body", err)
+		return errorResponse(400, "Invalid request body")
+	}
+
+	log.Infof("Assigning routine %s to student %s by trainer %s", req.RoutineID, req.StudentID, trainerID)
+
+	// Verify the routine exists and belongs to the trainer
+	routine, err := a.routineService.GetRoutine(ctx, req.RoutineID)
+	if err != nil {
+		log.Errorf("Failed to get routine %s: %v", req.RoutineID, err)
+		return errorResponse(404, "Routine not found")
+	}
+
+	if routine.TrainerID != trainerID {
+		log.Errorf("Trainer %s does not own routine %s", trainerID, req.RoutineID)
+		return errorResponse(403, "You don't have permission to assign this routine")
+	}
+
+	// Verify the student exists
+	_, err = a.userService.GetStudent(ctx, req.StudentID)
+	if err != nil {
+		log.Errorf("Failed to get student %s: %v", req.StudentID, err)
+		return errorResponse(404, "Student not found")
+	}
+
+	// Create a new routine assignment (copy of the routine for the student)
+	assignment := &routineDomain.CreateRoutineRequest{
+		Name:        routine.Name,
+		Description: routine.Description,
+		WeekCount:   routine.WeekCount,
+	}
+
+	assignedRoutine, err := a.routineService.CreateRoutine(ctx, trainerID, assignment)
+	if err != nil {
+		log.Errorf("Failed to create routine assignment: %v", err)
+		return errorResponse(500, "Failed to assign routine")
+	}
+
+	// Now update the routine with workout days and set student
+	_, err = a.routineService.UpdateRoutine(ctx, trainerID, assignedRoutine.ID, &routineDomain.UpdateRoutineRequest{
+		Name:        routine.Name,
+		Description: routine.Description,
+		Status:      routineDomain.RoutineStatusActive,
+		WorkoutDays: routine.WorkoutDays,
+	})
+	if err != nil {
+		log.Errorf("Failed to create routine assignment: %v", err)
+		return errorResponse(500, "Failed to assign routine")
+	}
+
+	log.Infof("Successfully assigned routine %s to student %s (new routine ID: %s)", req.RoutineID, req.StudentID, assignedRoutine.ID)
+
+	return jsonResponse(200, map[string]interface{}{
+		"data": assignedRoutine,
 	})
 }
 
